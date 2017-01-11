@@ -107,7 +107,6 @@ class KeystoneHTTPClient(HTTPClient):
         # We have to import this here, since we can't assume the library
         # is available from global scope.
         from keystoneauth1.exceptions.http import HttpError
-
         try:
             # The order of these parameters is different that what
             # we expect, but the names are the same:
@@ -116,8 +115,8 @@ class KeystoneHTTPClient(HTTPClient):
                                         data=data,
                                         params=params)
         except HttpError as e:
-            return e.response
-
+	    return e.response
+	    
 
 # An instance of HTTPClient, which will be used to make the request.
 http_client = None
@@ -670,12 +669,10 @@ def list_network_attachments(network, project):
     <project> may be either "all" or a specific project name.
     """
     url = object_url('network', network, 'attachments')
-
     if project == "all":
         do_get(url)
     else:
-        do_get(url, data={'project': project})
-
+        do_get(url, params={'project': project})
 
 @cmd
 def list_nodes(is_free):
@@ -830,6 +827,6 @@ def main():
         try:
             command_dict[sys.argv[1]](*sys.argv[2:])
         except FailedAPICallException:
-            sys.exit(1)
+	    sys.exit(1)
         except InvalidAPIArgumentsException:
-            sys.exit(2)
+	    sys.exit(2)
