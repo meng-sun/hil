@@ -236,7 +236,7 @@ def do_get(url, params=None):
 def do_delete(url):
     check_status_code(http_client.request('DELETE', url))
 
-
+# outdated
 def cmd(f):
     """A decorator for CLI commands.
 
@@ -266,6 +266,15 @@ def cmd(f):
     usage_dict[f.__name__] = get_usage(f)
     return wrapped
 
+@cmd
+def wrapped(f, *args, **kwargs):
+    #try:
+    f(*args, **kwargs)
+    #except TypeError:
+    #    # TODO TypeError is probably too broad here.
+    #    sys.stderr.write('Invalid arguements.  Usage:\n')
+    #    raise InvalidAPIArgumentsException()
+    #    return wrapped
 
 class CommandListener(object):
     """A decorator for CLI commands.
@@ -278,7 +287,7 @@ class CommandListener(object):
 
     def __init__(self):
         print "init cmdlistener"
-        parser = argparse.ArgumentParser(usage='haas <command> [<args>]')
+        parser = argparse.ArgumentParser(usage='haas')
         # parser.add_argument('action', nargs='?', help='TODO')
         # args = parser.parse_args(sys.argv[1:2])
         # TODO: check to make sure there is a command else throw error
@@ -292,16 +301,38 @@ class CommandListener(object):
             # manually update the file 
             # raise InvalidAPIArgumentsException()
         subcommand_parsers = parser.add_subparsers()
-        print "init list_nodes_p"
-        list_nodes_parser = subcommand_parsers.add_parser('list_nodes')
-        list_nodes_parser.add_argument('is_free', default='all')
+        
+        #these are examples: 
+        list_nodes_parser = subcommand_parsers.add_parser('list_nodes', help="1")
+        list_nodes_parser.add_argument('is_free', default='all', help="2")
         list_nodes_parser.set_defaults(func=list_nodes)
+        
+        list_projnodes_parser = subcommand_parsers.add_parser('list_project_nodes', help="1")
+        list_projnodes_parser.add_argument('project', help="3")
+        list_projnodes_parser.set_defaults(func=list_project_nodes)
+
+        
+        #these are actual parsers
+        #PARENT PARSERS
+        node_parser = argparse.ArgumentParser(usage = 'node', add_help=False)
+        node_parser.add_argument('name')
+        node_parser.add_argument('type')
+        node_parser.add_argument('ipmi', nargs=3)
+
+
+        register_parser = subcommand_parsers.add_parser('register')
+        register_parser_options = register_parser.add_subparsers()
+        register_node = register_parser_options.add_parser('node', parents=[node_parser]) 
+        register_node.set_defaults(func=node_register)
         print "init parse"
         print sys.argv
         args = parser.parse_args(sys.argv[1:])
-        args.func(args)
+        try:
+            args.func(args)
+        except TypeError:
+            print "missing a required flag option"
+            raise InvalidAPIArgumentsException()
         print args
-        print args.is_free
         print "EOF"
  
 def serve(port):
@@ -464,7 +495,7 @@ def headnode_stop(headnode):
     do_post(url)
 
 
-def node_register(node, subtype, *args):
+def node_register(args):
     """Register a node named <node>, with the given type
         if obm is of type: ipmi then provide arguments
         "ipmi", <hostname>, <ipmi-username>, <ipmi-password>
@@ -475,10 +506,10 @@ def node_register(node, subtype, *args):
     # In principle this should come from api.py
     # In future an api call to list which plugins are active will be added.
 
-    if subtype in obm_types:
-        if len(args) == 3:
-            obminfo = {"type": obm_api + subtype, "host": args[0],
-                       "user": args[1], "password": args[2]
+    if args.subtype in obm_types:
+        if len(args.ipmi) == 3:
+            obminfo = {"type": obm_api + args.subtype, "host": args.ipmi[0],
+                       "user": args.ipmi[1], "password": args.ipmi[2]
                        }
         else:
             sys.stderr.write('ERROR: subtype ' + subtype +
@@ -490,7 +521,7 @@ def node_register(node, subtype, *args):
         sys.stderr.write('Supported OBM sub-types: ipmi, mock\n')
         return
 
-    url = object_url('node', node)
+    url = object_url('node', args.node)
     do_put(url, data={"obm": obminfo})
 
 
@@ -516,12 +547,12 @@ def node_power_off(node):
 
 
 
-def node_register_nic(node, nic, macaddr):
+def node_register_nic(args):
     """
     Register existence of a <nic> with the given <macaddr> on the given <node>
     """
-    url = object_url('node', node, 'nic', nic)
-    do_put(url, data={'macaddr': macaddr})
+    url = object_url('node', args.node, 'nic', args.nic)
+    do_put(url, data={'macaddr': args.macaddr})
 
 
 
@@ -712,9 +743,9 @@ def list_nodes(args):
 
 
 
-def list_project_nodes(project):
+def list_project_nodes(args):
     """List all nodes attached to a <project>"""
-    url = object_url('project', project, 'nodes')
+    url = object_url('project', args.project, 'nodes')
     do_get(url)
 
 
@@ -847,8 +878,12 @@ def main():
     # setup_http_client()
     print "cmdlistener running"
     setup_http_client()
-    CommandListener()
-    print "cmdlistener ran"
+    try:
+        CommandListener()
+    except FailedAPICallException:
+        sys.exit(1)
+    except InvalidAPIArgumentsException:
+        sys.exit(2)
     '''if len(sys.argv) < 2 or sys.argv[1] not in command_dict:
         #Display usage for all commands
         help()
