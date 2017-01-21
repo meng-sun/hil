@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 # Copyright 2013-2014 Massachusetts Open Cloud Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +26,7 @@ import urllib
 import schema
 import abc
 import argparse
+import argcomplete
 
 from functools import wraps
 
@@ -266,15 +268,6 @@ def cmd(f):
     usage_dict[f.__name__] = get_usage(f)
     return wrapped
 
-@cmd
-def wrapped(f, *args, **kwargs):
-    #try:
-    f(*args, **kwargs)
-    #except TypeError:
-    #    # TODO TypeError is probably too broad here.
-    #    sys.stderr.write('Invalid arguements.  Usage:\n')
-    #    raise InvalidAPIArgumentsException()
-    #    return wrapped
 
 class CommandListener(object):
     """A decorator for CLI commands.
@@ -286,20 +279,7 @@ class CommandListener(object):
     # TODO documentation
 
     def __init__(self):
-        print "init cmdlistener"
         parser = argparse.ArgumentParser(usage='haas')
-        # parser.add_argument('action', nargs='?', help='TODO')
-        # args = parser.parse_args(sys.argv[1:2])
-        # TODO: check to make sure there is a command else throw error
-        # try:
-        #    getattr(self, args.action)()
-        # except TypeError:
-            # TODO TypeError is probably too broad here.
-            # sys.stderr.write('Invalid command.  Maybe you mean:\n')
-            # No easy way to write out all functions unless we reuse the usage
-            # function with the wrapper or use __dir___(CommandListener) or 
-            # manually update the file 
-            # raise InvalidAPIArgumentsException()
         subcommand_parsers = parser.add_subparsers()
         
         #these are examples: 
@@ -310,21 +290,38 @@ class CommandListener(object):
         list_projnodes_parser = subcommand_parsers.add_parser('list_project_nodes', help="1")
         list_projnodes_parser.add_argument('project', help="3")
         list_projnodes_parser.set_defaults(func=list_project_nodes)
-
-        
+  
         #these are actual parsers
-        #PARENT PARSERS
-        node_parser = argparse.ArgumentParser(usage = 'node', add_help=False)
-        node_parser.add_argument('name')
-        node_parser.add_argument('type')
-        node_parser.add_argument('ipmi', nargs=3)
+        #PARENT PARSERS: shared options
+        # TODO check if we can reuse arg names
+        get_name = argparse.ArgumentParser(add_help=False)
+        get_name.add_argument('name', metavar='<object name>')
+        
+        get_type = argparse.ArgumentParser(add_help=False)
+        get_type.add_argument('type', metavar='<object type>')
 
-
+        #ACTIONS: register, delete, connect, disconnect, reset, list, (replace)
         register_parser = subcommand_parsers.add_parser('register')
         register_parser_options = register_parser.add_subparsers()
-        register_node = register_parser_options.add_parser('node', parents=[node_parser]) 
+        register_node = register_parser_options.add_parser('node', parents=[get_name]) 
+        register_node.add_argument('obm_type')
+        # Required is set to true since others are unsupported
+        register_node.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)
         register_node.set_defaults(func=node_register)
-        print "init parse"
+        
+        # TODO register network, user, project, headnode, switch, port
+        register_network = register_parser_options.add_parser('network', parents=[get_name])
+
+        # TODO all of delete
+
+
+        # TODO connect
+        connect_parser = subcommand_parsers.add_parser('connect')
+        connect_parser_options = connect_parser.add_subparsers()
+        node_connect_network = connect_parser_options.add_parser('idk')
+
+        print "tab completed"
+        argcomplete.autocomplete(parser) 
         print sys.argv
         args = parser.parse_args(sys.argv[1:])
         try:
@@ -506,13 +503,13 @@ def node_register(args):
     # In principle this should come from api.py
     # In future an api call to list which plugins are active will be added.
 
-    if args.subtype in obm_types:
+    if args.obm_type in obm_types:
         if len(args.ipmi) == 3:
-            obminfo = {"type": obm_api + args.subtype, "host": args.ipmi[0],
+            obminfo = {"type": obm_api + args.obm_type, "host": args.ipmi[0],
                        "user": args.ipmi[1], "password": args.ipmi[2]
                        }
         else:
-            sys.stderr.write('ERROR: subtype ' + subtype +
+            sys.stderr.write('ERROR: subtype ' + obm_type +
                              ' requires exactly 3 arguments\n')
             sys.stderr.write('<hostname> <ipmi-username> <ipmi-password>\n')
             return
@@ -521,7 +518,7 @@ def node_register(args):
         sys.stderr.write('Supported OBM sub-types: ipmi, mock\n')
         return
 
-    url = object_url('node', args.node)
+    url = object_url('node', args.name)
     do_put(url, data={"obm": obminfo})
 
 
