@@ -303,18 +303,78 @@ class CommandListener(object):
         #ACTIONS: register, delete, connect, disconnect, reset, list, (replace)
         register_parser = subcommand_parsers.add_parser('register')
         register_parser_options = register_parser.add_subparsers()
+        
         register_node = register_parser_options.add_parser('node', parents=[get_name]) 
+        register_node.add_argument('name')
         register_node.add_argument('obm_type')
         # Required is set to true since others are unsupported
-        register_node.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)
+        register_node.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)        
         register_node.set_defaults(func=node_register)
         
         # TODO register network, user, project, headnode, switch, port
         register_network = register_parser_options.add_parser('network', parents=[get_name])
-
+        register_network.add_argument('--project')
+        register_network.add_argument('--owner')
+        register_network.add_argument('--access')
+        register_network.add_argument('--id')
+        register_network.add_argument('--simple', action='store_true')
+        if register_network.parse_args().simple:
+            register_network.set_defaults(func=network_create_simple)
+        else:
+            register_network.set_defaults(func=network_create)
+        #needs to be one func if just project and a diff if teh other three!!!
+        
+        #register set for user
+        register_user = register_parser_options.add_parser('user', parents=[get_name])
+        register_user.add_argument('username')
+        register_user.add_argument('--password', '--pass', required=True)
+        register_user.add_argument('--admin', action='store_true')
+        register_user.set_defaults(func=user_create)
+        
+        #register set for project
+        register_project = register_parser_options.add_parser('project', parents=[get_name])
+        register_project.add_argument('name')
+        register_project.set_defaults(func=project_create)
+        
+        #register set for switch
+        register_switch = register_parser_options.add_parser('switch', parents=[get_name])
+        register_switch.add_argument('name')
+        register_switch.add_argument('obm_type')
+        register_switch.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)
+        register_switch.set_defaults(func=switch_register)
+        
+        #register set for nic
+        register_nic = register_parser_options.add_parser('nic', parents=[get_name])
+        register_nic.add_argument('name')
+        register_nic.add_argument('--node', required=True)
+        register_nic.add_argument('--macaddr', required=True)
+        register_nic.set_defaults(func=node_register_nic)
+        
+        #register set for headnode
+        register_hnode = register_parser_options.add_parser('headnode', parents=[get_name]) 
+        register_hnode.add_argument('name')
+        register_hnode.add_argument('--project', required=True)
+        register_hnode.add_argument('--image', '--img', required=True)
+        register_hnode.set_defaults(func=headnode_create)
+        
+        #register set for hnic
+        register_hnic = register_parser_options.add_parser('hnic', parents=[get_name])
+        register_hnic.add_argument('name')
+        register_hnic.add_argument('--headnode', '--hnode', '--hn', required=True)
+        register_hnic.set_defaults(func=headnode_create_hnic)
+        
+        #register set for port
+        register_port = register_parser_options.add_parser('port', parents=[get_name])
+        register_port.add_argument('name')
+        register_port.add_argument('--switch', required=True)
+        register_port.set_defaults(func=port_register)
+        
         # TODO all of delete
 
-
+        #All of disconnect
+        remove_parser = subcommand_parsers.add_parser('disconnect', 'remove', 'detach')
+         
+        
         # TODO connect
         connect_parser = subcommand_parsers.add_parser('connect')
         connect_parser_options = connect_parser.add_subparsers()
@@ -437,7 +497,7 @@ def network_grant_project_access(project, network):
     do_put(url)
 
 
-def network_revoke_project_access(project, network):
+def network_remove_project(project, network):
     """Remove <project> from <network> access"""
     url = object_url('network', network, 'access', project)
     do_delete(url)
@@ -474,7 +534,7 @@ def project_connect_node(project, node):
     do_post(url, data={'node': node})
 
 
-def project_detach_node(project, node):
+def project_remove_node(project, node):
     """Detach <node> from <project>"""
     url = object_url('project', project, 'detach_node')
     do_post(url, data={'node': node})
@@ -582,7 +642,7 @@ def node_connect_network(node, nic, network, channel):
 
 
 
-def node_detach_network(node, nic, network):
+def node_remove_network(node, nic, network):
     """Detach <node> from the given <network> on the given <nic>"""
     url = object_url('node', node, 'nic', nic, 'detach_network')
     do_post(url, data={'network': network})
@@ -596,7 +656,7 @@ def headnode_connect_network(headnode, nic, network):
 
 
 
-def headnode_detach_network(headnode, hnic):
+def headnode_remove_network(headnode, hnic):
     """Detach <headnode> from the network on given <nic>"""
     url = object_url('headnode', headnode, 'hnic', hnic, 'detach_network')
     do_post(url)
@@ -703,7 +763,7 @@ def port_connect_nic(switch, port, node, nic):
 
 
 
-def port_detach_nic(switch, port):
+def port_remove_nic(switch, port):
     """Detach a <port> on a <switch> from whatever's connected to it"""
     url = object_url('switch', switch, 'port', port, 'detach_nic')
     do_post(url)
