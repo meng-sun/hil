@@ -14,5 +14,11 @@
 # express or implied.  See the License for the specific language
 # governing permissions and limitations under the License.
 
-from haas import cli
-cli.main()
+from haas import speed_parser
+import argcomplete
+
+par = speed_parser.getCommandListener()
+argcomplete.autocomplete(par)
+
+from haas import cli_new
+cli_new.main()
