@@ -27,6 +27,7 @@ import schema
 import abc
 import argparse
 import argcomplete
+import subprocess
 
 from functools import wraps
 
@@ -35,6 +36,15 @@ usage_dict = {}
 MIN_PORT_NUMBER = 1
 MAX_PORT_NUMBER = 2**16 - 1
 
+class confirm(argparse.Action):
+    def __init__(self,option_strings,dest,nargs=None,**kwargs):
+        super(confirm, self).__init__(option_strings,dest,**kwargs)
+    def __call__(self,parser,namespace,values,option_string=None):
+        print "are you sure about this change? [y/n] to continue\n"
+        confirm = subprocess.Popen(['read','-n','1','confirm','\n','echo','$confirm'], shell=True, stdout=subprocess.PIPE)
+        if confirm == "y":
+            setattr(namespace,self.dest,values)
+        print "est"
 
 class HTTPClient(object):
     """An HTTP client.
@@ -270,48 +280,76 @@ def cmd(f):
 
 
 class CommandListener(object):
-    """A decorator for CLI commands.
-
-    This decorator firstly adds the function to a dictionary of valid CLI
-    commands, secondly adds exception handling for when the user passes the
-    wrong number of arguments, and thirdly generates a 'usage' description and
+    """Creates argparse command line interface for calling API functions.
     """
     # TODO redo documentation and help statements
 
     def __init__(self):
         parser = argparse.ArgumentParser(usage='haas')
         subcommand_parsers = parser.add_subparsers()
-        
-        # Startup Commands 
+
+        # Startup Commands
         serve_parser = subcommand_parsers.add_parser('serve', help="todo")
         serve_parser.add_argument('port', type=int, help="2")
         serve_parser.set_defaults(func=serve)
-        
+
         serve_networks_parser = subcommand_parsers.add_parser('serveNetworks', help="1")
         serve_networks_parser.set_defaults(func=serve_networks)
-  
+
         #PARENT PARSERS: shared options
-        # TODO check if we can differentiate between reused arg names
         get_name = argparse.ArgumentParser(add_help=False)
         get_name.add_argument('name', metavar='<object name>')
-        
+
         get_type = argparse.ArgumentParser(add_help=False)
         get_type.add_argument('type', metavar='<object type>')
 
-        get_subtype_details = argparser.ArgumentParser(add_help=False)
+        get_subtype_details = argparse.ArgumentParser(add_help=False)
         get_subtype_details.add_argument('host', metavar='<host>')
         get_subtype_details.add_argument('user', metavar= '<username>')
         get_subtype_details.add_argument('password',metavar='<password>')
-
-        # optional for future
+        
+        get_names = argparse.ArgumentParser(add_help=False)
+        get_types = argparse.ArgumentParser(add_help=False)
         get_names.add_argument('name', metavar='<object name>', action='append')
         get_types.add_argument('type', metavar='<object type>', action='append')
-        
-        #ACTIONS: register, delete, connect, disconnect, reset, list, (replace)
+
+        # parser commands by object
+        node_parser = subcommand_parsers.add_parser('node')
+        node_subparsers = node_parser.add_subparsers()
+        network_parser = subcommand_parsers.add_parser('network')
+        network_subparsers = network_parser.add_subparsers()
+        user_parser = subcommand_parsers.add_parser('user')
+        user_subparsers = user_parser.add_subparsers()
+        project_parser = subcommand_parsers.add_parser('project')
+        project_subparsers = project_parser.add_subparsers()
+        switch_parser = subcommand_parsers.add_parser('switch')
+        switch_subparsers = switch_parser.add_subparsers()
+        headnode_parser = subcommand_parsers.add_parser('headnode')
+        headnode_subparsers = headnode_parser.add_subparsers()
+        nic_parser = subcommand_parsers.add_parser('nic')
+        nic_subparsers = nic_parser.add_subparsers()
+        hnic_parser = subcommand_parsers.add_parser('hnic')
+        hnic_subparsers = hnic_parser.add_subparsers()
+        port_parser = subcommand_parsers.add_parser('port')
+        port_subparsers = port_parser.add_subparsers()
+
+        node_register = node_subparsers.add_parser('register')
+        node_register_subtype = node_register.add_subparsers()
+        ipmi_node_register = node_register_subtype.add_parser('ipmi', parents = [get_name, get_subtype_details])
+        mock_node_register = node_register_subtype.add_parser('mock', parents = [get_name, get_subtype_details])
+        node_register.set_defaults(func = node_register)
+        node_delete = node_subparsers.add_parser('delete')
+        node_delete.add_argument('name', action = confirm)
+
+        # current both types are supported
+
+        """
+        node_parser = subcommand_parsers.add_parser('node')
+
         register_parser = subcommand_parsers.add_parser('register',help='todo makes the thing')
         register_parser_options = register_parser.add_subparsers()
-        
-        register_node = register_parser_options.add_parser('node', parents=[get_name]) 
+
+        register_node = register_parser_options.add_parser('node', parents=[get_name])
         register_node.add_argument('name')
         register_node.add_argument('subtype')
         # Required is set to true since other obm_types are currently unsupported
@@ -322,26 +360,26 @@ class CommandListener(object):
         register_network = register_parser_options.add_parser('network', parents=[get_name])
         # TODO decide whether to use two different commands for simple v reg network
         # or to create positional arguments for owner/access/id and proj and mutually
-        # exclude those 
-        register_simple_network = register_parser_options.add_parser('simpleNet',parents=[get_name]) 
+        # exclude those
+        register_simple_network = register_parser_options.add_parser('simpleNet',parents=[get_name])
         register_network.add_argument('--owner',required=True)
         register_network.add_argument('--access',required=True)
         register_network.add_argument('--id',dest='net_id',required=True)
         register_network.set_defaults(func=network_create)
- 
+
         register_simple_network.add_argument('--project',required=True)
         register_simple_network.set_defaults(func=network_create_simple)
-        
+
         #register set for user
         register_user = register_parser_options.add_parser('user', parents=[get_name])
         register_user.add_argument('--password', '--pass', required=True)
         register_user.add_argument('--admin', action='store_true', dest='is_admin')
         register_user.set_defaults(func=user_create)
-        
+
         #register set for project
         register_project = register_parser_options.add_parser('project', parents=[get_name])
         register_project.set_defaults(func=project_create)
-        
+
         #register set for switch
         register_switch = register_parser_options.add_parser('switch',add_help=False)
         register_switch.set_defaults(switch_register)
@@ -361,38 +399,109 @@ class CommandListener(object):
         register_nic.add_argument('--node', required=True)
         register_nic.add_argument('--macaddr', required=True)
         register_nic.set_defaults(func=node_register_nic)
-        
+
         #register set for headnode
-        register_hnode = register_parser_options.add_parser('headnode', parents=[get_name]) 
+        register_hnode = register_parser_options.add_parser('headnode', parents=[get_name])
         register_hnode.add_argument('name')
         register_hnode.add_argument('--project', required=True)
         register_hnode.add_argument('--image', '--img', required=True)
         register_hnode.set_defaults(func=headnode_create)
-        
+
         #register set for hnic
         register_hnic = register_parser_options.add_parser('hnic', parents=[get_name])
         register_hnic.add_argument('name')
         register_hnic.add_argument('--headnode', '--hnode', '--hn', required=True)
         register_hnic.set_defaults(func=headnode_create_hnic)
-        
+
         #register set for port
         register_port = register_parser_options.add_parser('port', parents=[get_name])
         register_port.add_argument('name')
         register_port.add_argument('--switch', required=True)
         register_port.set_defaults(func=port_register)
 
- 
+
         # TODO all of delete
 
-        #All of disconnect
-        remove_parser = subcommand_parsers.add_parser('disconnect', help='what the')
-         
-        
-        # TODO connect
-        connect_parser = subcommand_parsers.add_parser('connect')
-        connect_parser_options = connect_parser.add_subparsers()
-        node_connect_network = connect_parser_options.add_parser('idk')
+        #show set
+        show_parser = subcommand_parsers.add_parser('show')
+        show_parser.add_argument('name')
+        name = 'show_' + show_parser.parse_args().name
+        '''not sure this will work'''
+        show_parser.set_defaults(func=name)
 
+        #list stuff
+        list_parser = subcommand_parsers.add_parser('list', parents=[get_name])
+        list_projects = list_parser_options.add_parser('project')
+        list_projects.set_defaults(func=list_projects)
+        list_switches = list_parser_options.add_parser('switch')
+        list_switches.set_defaults(func=list_switches)
+
+        list_networks = list_parser_options.add_parser('network')
+        list_networks.set_defaults(func=list_networks)
+        one_or = list_networks.add_mutually_exclusive_group()
+        one_or.add_argument('--project', '--proj')
+        one_or.add_arguments('--all', action="store_true")
+        list_networks.add_argument()
+        if not list_networks.parse_args().project is None:
+            list_networks.set_defaults(func=list_project_networks)
+
+        list_nodes = list_parser_options.add_parser('node')
+        list_nodes.add_argument('--project', '--proj')
+        list_nodes.add_argument('--network', '--net')
+        list_nodes.set_defaults(func=list_nodes)
+        if not list_nodes.parse_args().project is None:
+            list_nodes.set_defaults(func=list_project_nodes)
+        if not list_nodes.parse_args().network is None:
+            list.nodes.set_defaults(func=list_network_attachments)
+        list_nodes.add_argument('--free', action="store_true")
+        list_nodes.add_argument('--all', action="store_true")
+
+        #All of disconnect and connect
+        remove_parser = subcommand_parsers.add_parser('disconnect', 'remove', 'detach')
+        connect_parser = subcommand_parsers.add_parser('connect', 'add', 'attach')
+        args = parser.parse_args()
+        obj_list = ['project', 'node', 'network', 'nic', 'headnode',
+                    'user', 'hnic', 'switch', 'port']
+        true = []
+        for list_item in obj_list:
+            if not args.list_item is None:
+                true.append(list_item)
+        '''project = not args.project is None
+        node =  not args.node is None
+        network = not args.network is None
+        nic = not  args.nic is None
+        headnode = not args.headnode is None
+        user = not args.user is None
+        hnic = not args.hnic is None
+        switch = not args.switch is None
+        port = not args.port is None'''
+
+        #assign functions for connect and disconnect
+        if 'user' in true and 'project' in true and len(true) == 2:
+            remove_parser.set_defaults(func=user_remove_project)
+            connect_parser.set_defaults(func=user_add_project)
+        elif 'project' in true and 'network' in true and len(true) == 2:
+            remove_parser.set_defaults(func=network_revoke_project_access)
+            connect_parser.set_defaults(func=network_grant_project_access)
+        elif 'project' in true and 'node' in true and len(true) == 2:
+            remove_parser.set_defaults(func=project_detach_node)
+            connect_parser.set_defaults(func=project_connect_node)
+        elif 'node' in true and 'nic' in true and 'network' in true and len(true) == 3:
+            remove_parser.set_defaults(func=node_detach_network)
+            connect_parser.set_defaults(func=node_connect_network)
+        elif 'headnode' in true and 'hnic' in true:
+            if len(true) == 2:
+                remove_parser.set_defaults(func=headnode_detach_network)
+            if 'network' in true and len(true) == 3:
+                connect_parser.set_defaults(func=headnode_connect_network)
+        elif 'port' in true and 'switch' in true:
+            if len(true) == 2:
+                remove_parser.set_defaults(func=port_detach_nic)
+            if 'node' in true and 'nic' in true and len(true) == 4:
+                connect_parser.set_defaults(func=port_connect_nic)
+        else:
+            '''error'''
+        """
         args = parser.parse_args(sys.argv[1:])
         try:
             print args

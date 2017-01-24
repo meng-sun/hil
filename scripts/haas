@@ -17,11 +17,11 @@
 from haas import command_listener
 import argcomplete
 
-parser = command_listener.getCommandFramework()
+parser = command_listener.CommandFramework().getCommandFramework()
 argcomplete.autocomplete(parser)
 
 # We know this is bad practice but importing cli_new slows 
 # tab completition down by about a second
 from haas import cli_new
-
+print "was run"
 cli_new.main()
