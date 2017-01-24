@@ -14,7 +14,7 @@
 # governing permissions and limitations under the License.
 
 """This module implements the HaaS command line tool."""
-from haas import config, server, command_listener
+from haas import config, server
 from haas.config import cfg
 
 import inspect
@@ -267,16 +267,149 @@ def cmd(f):
         return ' '.join(showee)
     usage_dict[f.__name__] = get_usage(f)
     return wrapped
+
+
+class CommandListener(object):
+    """A decorator for CLI commands.
+
+    This decorator firstly adds the function to a dictionary of valid CLI
+    commands, secondly adds exception handling for when the user passes the
+    wrong number of arguments, and thirdly generates a 'usage' description and
+    """
+    # TODO redo documentation and help statements
+
+    def __init__(self):
+        parser = argparse.ArgumentParser(usage='haas')
+        subcommand_parsers = parser.add_subparsers()
+        
+        # Startup Commands 
+        serve_parser = subcommand_parsers.add_parser('serve', help="todo")
+        serve_parser.add_argument('port', type=int, help="2")
+        serve_parser.set_defaults(func=serve)
+        
+        serve_networks_parser = subcommand_parsers.add_parser('serveNetworks', help="1")
+        serve_networks_parser.set_defaults(func=serve_networks)
+  
+        #PARENT PARSERS: shared options
+        # TODO check if we can differentiate between reused arg names
+        get_name = argparse.ArgumentParser(add_help=False)
+        get_name.add_argument('name', metavar='<object name>')
+        
+        get_type = argparse.ArgumentParser(add_help=False)
+        get_type.add_argument('type', metavar='<object type>')
+
+        get_subtype_details = argparser.ArgumentParser(add_help=False)
+        get_subtype_details.add_argument('host', metavar='<host>')
+        get_subtype_details.add_argument('user', metavar= '<username>')
+        get_subtype_details.add_argument('password',metavar='<password>')
+
+        # optional for future
+        get_names.add_argument('name', metavar='<object name>', action='append')
+        get_types.add_argument('type', metavar='<object type>', action='append')
+        
+        #ACTIONS: register, delete, connect, disconnect, reset, list, (replace)
+        register_parser = subcommand_parsers.add_parser('register',help='todo makes the thing')
+        register_parser_options = register_parser.add_subparsers()
+        
+        register_node = register_parser_options.add_parser('node', parents=[get_name]) 
+        register_node.add_argument('name')
+        register_node.add_argument('subtype')
+        # Required is set to true since other obm_types are currently unsupported
+        register_node.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)
+        register_node.set_defaults(func=node_register)
+        
+        # register set for network
+        register_network = register_parser_options.add_parser('network', parents=[get_name])
+        # TODO decide whether to use two different commands for simple v reg network
+        # or to create positional arguments for owner/access/id and proj and mutually
+        # exclude those 
+        register_simple_network = register_parser_options.add_parser('simpleNet',parents=[get_name]) 
+        register_network.add_argument('--owner',required=True)
+        register_network.add_argument('--access',required=True)
+        register_network.add_argument('--id',dest='net_id',required=True)
+        register_network.set_defaults(func=network_create)
  
-def serve(port):
+        register_simple_network.add_argument('--project',required=True)
+        register_simple_network.set_defaults(func=network_create_simple)
+        
+        #register set for user
+        register_user = register_parser_options.add_parser('user', parents=[get_name])
+        register_user.add_argument('--password', '--pass', required=True)
+        register_user.add_argument('--admin', action='store_true', dest='is_admin')
+        register_user.set_defaults(func=user_create)
+        
+        #register set for project
+        register_project = register_parser_options.add_parser('project', parents=[get_name])
+        register_project.set_defaults(func=project_create)
+        
+        #register set for switch
+        register_switch = register_parser_options.add_parser('switch',add_help=False)
+        register_switch.set_defaults(switch_register)
+        switch_type = register_switch.add_subparsers()
+        register_nexus_switch = switch_type.add_parser('nexus',parents=[get_name, get_subtype_details])
+        register_nexus_switch.add_argument('<dummy vlan>', dest = 'dummy_vlan')
+        register_nexus_switch.add_argument('subtype', default='nexus')
+        register_mock_switch = switch_type.add_parser('mock',parents=[get_name, get_subtype_details])
+        register_powerconnect55xx_switch = switch_type.add_parser('powerconnect55xx',
+                                           parents=[get_name, get_subtype_details])
+        register_brocade_switch = switch_type.add_parser('brocade',parents=[get_name, get_subtype_details])
+        register_brocade_switch.add_argument('<interface type>', dest = 'interface_type')
+
+        #register set for nic
+        register_nic = register_parser_options.add_parser('nic', parents=[get_name])
+        register_nic.add_argument('name')
+        register_nic.add_argument('--node', required=True)
+        register_nic.add_argument('--macaddr', required=True)
+        register_nic.set_defaults(func=node_register_nic)
+        
+        #register set for headnode
+        register_hnode = register_parser_options.add_parser('headnode', parents=[get_name]) 
+        register_hnode.add_argument('name')
+        register_hnode.add_argument('--project', required=True)
+        register_hnode.add_argument('--image', '--img', required=True)
+        register_hnode.set_defaults(func=headnode_create)
+        
+        #register set for hnic
+        register_hnic = register_parser_options.add_parser('hnic', parents=[get_name])
+        register_hnic.add_argument('name')
+        register_hnic.add_argument('--headnode', '--hnode', '--hn', required=True)
+        register_hnic.set_defaults(func=headnode_create_hnic)
+        
+        #register set for port
+        register_port = register_parser_options.add_parser('port', parents=[get_name])
+        register_port.add_argument('name')
+        register_port.add_argument('--switch', required=True)
+        register_port.set_defaults(func=port_register)
+
+ 
+        # TODO all of delete
+
+        #All of disconnect
+        remove_parser = subcommand_parsers.add_parser('disconnect', help='what the')
+         
+        
+        # TODO connect
+        connect_parser = subcommand_parsers.add_parser('connect')
+        connect_parser_options = connect_parser.add_subparsers()
+        node_connect_network = connect_parser_options.add_parser('idk')
+
+        args = parser.parse_args(sys.argv[1:])
+        try:
+            print args
+            args.func(args)
+        except TypeError:
+            print "missing a required flag option"
+            raise InvalidAPIArgumentsException()
+
+def serve(args):
     try:
-        port = schema.And(
+        args.port = schema.And(
         schema.Use(int),
         lambda n: MIN_PORT_NUMBER <= n <= MAX_PORT_NUMBER).validate(port)
     except schema.SchemaError:
-        sys.exit('Error: Invaid port. Must be in the range 1-65535.')
+        sys.exit('Error: Invalid port. Must be in the range 1-65535.')
     except Exception as e:
-        sys.exit('Unxpected Error!!! \n %s' % e)
+        sys.exit('Unexpected Error!!! \n %s' % e)
 
     """Start the HaaS API server"""
     if cfg.has_option('devel', 'debug'):
@@ -306,34 +439,31 @@ def serve_networks():
         sleep(2)
 
 
-def user_create(username, password, is_admin):
+def user_create(args):
     """Create a user <username> with password <password>.
 
     <is_admin> may be either "admin" or "regular", and determines whether
     the user has administrative priveledges.
     """
-    url = object_url('/auth/basic/user', username)
-    if is_admin not in ('admin', 'regular'):
-        raise TypeError("is_admin must be either 'admin' or 'regular'")
+    url = object_url('/auth/basic/user', args.name)
     do_put(url, data={
-        'password': password,
-        'is_admin': is_admin == 'admin',
+        'password': args.password,
+        'is_admin': args.is_admin,
     })
 
 
-def network_create(network, owner, access, net_id):
-    """Create a link-layer <network>.  See docs/networks.md for details"""
-    url = object_url('network', network)
-    do_put(url, data={'owner': owner,
-                      'access': access,
-                      'net_id': net_id})
+def network_create(args):
+    """Create a link-layer <network>. See docs/networks.md for details."""
+    url = object_url('network', args.name)
+    do_put(url, data={'owner': args.owner,
+                      'access': args.access,
+                      'net_id': args.net_id})
 
-
-def network_create_simple(network, project):
-    """Create <network> owned by project.  Specific case of network_create"""
-    url = object_url('network', network)
-    do_put(url, data={'owner': project,
-                      'access': project,
+def network_create_simple(args):
+    """Creates a simple <network> owned by project."""
+    url = object_url('network', args.name)
+    do_put(url, data={'owner': args.project,
+                      'access': args.project,
                       'net_id': ""})
 
 
@@ -379,9 +509,9 @@ def network_remove_project(project, network):
     do_delete(url)
 
 
-def project_create(project):
+def project_create(args):
     """Create a <project>"""
-    url = object_url('project', project)
+    url = object_url('project', args.name)
     do_put(url)
 
 
@@ -439,13 +569,13 @@ def node_register(args):
     # In principle this should come from api.py
     # In future an api call to list which plugins are active will be added.
 
-    if args.obm_type in obm_types:
+    if args.subtype in obm_types:
         if len(args.ipmi) == 3:
-            obminfo = {"type": obm_api + args.obm_type, "host": args.ipmi[0],
+            obminfo = {"type": obm_api + args.subtype, "host": args.ipmi[0],
                        "user": args.ipmi[1], "password": args.ipmi[2]
                        }
         else:
-            sys.stderr.write('ERROR: subtype ' + obm_type +
+            sys.stderr.write('ERROR: subtype ' + args.subtype +
                              ' requires exactly 3 arguments\n')
             sys.stderr.write('<hostname> <ipmi-username> <ipmi-password>\n')
             return
@@ -539,7 +669,7 @@ def headnode_remove_network(headnode, hnic):
 
 
 
-def switch_register(switch, subtype, *args):
+def switch_register(org_args):
     """Register a switch with name <switch> and
     <subtype>, <hostname>, <username>,  <password>
     eg. haas switch_register mock03 mock mockhost01 mockuser01 mockpass01
@@ -548,8 +678,11 @@ def switch_register(switch, subtype, *args):
     backend. Ideally, this should be taken care of in the driver itself or
     client library (work-in-progress) should manage it.
     """
+    subtype = args.subtype
+    args = [org_args.host, org_args.user, org_args.password]
     switch_api = "http://schema.massopencloud.org/haas/v0/switches/"
     if subtype == "nexus":
+        args = args.append(org_args.dummy_vlan)
         if len(args) == 4:
             switchinfo = {
                 "type": switch_api + subtype,
@@ -564,6 +697,7 @@ def switch_register(switch, subtype, *args):
                                '<dummy_vlan_no>\n'))
             return
     elif subtype == "mock":
+        args = args.mock
         if len(args) == 3:
             switchinfo = {"type": switch_api + subtype, "hostname": args[0],
                           "username": args[1], "password": args[2]}
@@ -573,6 +707,7 @@ def switch_register(switch, subtype, *args):
             sys.stderr.write('<hostname> <username> <password>\n')
             return
     elif subtype == "powerconnect55xx":
+        args = args.powerconnect55xx
         if len(args) == 3:
             switchinfo = {"type": switch_api + subtype, "hostname": args[0],
                           "username": args[1], "password": args[2]}
@@ -582,6 +717,7 @@ def switch_register(switch, subtype, *args):
                                '<hostname> <username> <password>\n'))
             return
     elif subtype == "brocade":
+        args = args.brocade
         if len(args) == 4:
             switchinfo = {"type": switch_api + subtype, "hostname": args[0],
                           "username": args[1], "password": args[2],
