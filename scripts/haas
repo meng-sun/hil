@@ -14,14 +14,14 @@
 # express or implied.  See the License for the specific language
 # governing permissions and limitations under the License.
 
-from haas import command_listener()
+from haas import command_listener
 import argcomplete
 
-parser = command_listener.getCommandListener()
+parser = command_listener.getCommandFramework()
 argcomplete.autocomplete(parser)
 
 # We know this is bad practice but importing cli_new slows 
-# argcomplete down by about a second
+# tab completition down by about a second
 from haas import cli_new
 
 cli_new.main()
