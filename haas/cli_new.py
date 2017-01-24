@@ -303,14 +303,37 @@ class CommandListener(object):
         #ACTIONS: register, delete, connect, disconnect, reset, list, (replace)
         register_parser = subcommand_parsers.add_parser('register')
         register_parser_options = register_parser.add_subparsers()
+        
         register_node = register_parser_options.add_parser('node', parents=[get_name]) 
         register_node.add_argument('obm_type')
         # Required is set to true since others are unsupported
         register_node.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)
+        register_node.add_argument('--mock', nargs=3, metavar=('host','user', 'password'), required=True)
         register_node.set_defaults(func=node_register)
         
         # TODO register network, user, project, headnode, switch, port
         register_network = register_parser_options.add_parser('network', parents=[get_name])
+        register_network.add_argument('--project')
+        register_network.add_argument('--owner')
+        register_network.add_argument('--access')
+        register_network.add_argument('--id')
+        
+        #register set for user
+        register_user = register_parser_options.add_parser('user', parents=[get_name])
+        register_user.add_argument('username')
+        register_user.add_argument('password')
+        register_user.add_argument('--admin', action='store_true')
+        
+        #register set for project
+        register_project = register_parser_options.add_parser('project', parents=[get_name])
+        register_project.add_argument('name')
+        
+        #register set for switch
+        register_switch = register_parser_options.add_parser('switch', parents=[get_name])
+        register_switch.add_argument('name')
+        register_switch.add_argument('obm_type')
+        register_switch.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)
+        register_switch.add_argument('--mock', nargs=3, metavar=('host','user', 'password'), required=True)
 
         # TODO all of delete
 
