@@ -305,10 +305,10 @@ class CommandListener(object):
         register_parser_options = register_parser.add_subparsers()
         
         register_node = register_parser_options.add_parser('node', parents=[get_name]) 
+        register_node.add_argument('name')
         register_node.add_argument('obm_type')
         # Required is set to true since others are unsupported
-        register_node.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)
-        register_node.add_argument('--mock', nargs=3, metavar=('host','user', 'password'), required=True)
+        register_node.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)        
         register_node.set_defaults(func=node_register)
         
         # TODO register network, user, project, headnode, switch, port
@@ -317,24 +317,58 @@ class CommandListener(object):
         register_network.add_argument('--owner')
         register_network.add_argument('--access')
         register_network.add_argument('--id')
+        register_network.add_argument('--simple', action='store_true')
+        if register_network.parse_args().simple:
+            register_network.set_defaults(func=network_create_simple)
+        else:
+            register_network.set_defaults(func=network_create)
+        #needs to be one func if just project and a diff if teh other three!!!
         
         #register set for user
         register_user = register_parser_options.add_parser('user', parents=[get_name])
         register_user.add_argument('username')
-        register_user.add_argument('password')
+        register_user.add_argument('--password', '--pass', required=True)
         register_user.add_argument('--admin', action='store_true')
+        register_user.set_defaults(func=user_create)
         
         #register set for project
         register_project = register_parser_options.add_parser('project', parents=[get_name])
         register_project.add_argument('name')
+        register_project.set_defaults(func=project_create)
         
         #register set for switch
         register_switch = register_parser_options.add_parser('switch', parents=[get_name])
         register_switch.add_argument('name')
         register_switch.add_argument('obm_type')
         register_switch.add_argument('--ipmi', nargs=3, metavar=('host','user', 'password'), required=True)
-        register_switch.add_argument('--mock', nargs=3, metavar=('host','user', 'password'), required=True)
-
+        register_switch.set_defaults(func=switch_register)
+        
+        #register set for nic
+        register_nic = register_parser_options.add_parser('nic', parents=[get_name])
+        register_nic.add_argument('name')
+        register_nic.add_argument('--node', required=True)
+        register_nic.add_argument('--macaddr', required=True)
+        register_nic.set_defaults(func=node_register_nic)
+        
+        #register set for headnode
+        register_hnode = register_parser_options.add_parser('headnode', parents=[get_name]) 
+        register_hnode.add_argument('name')
+        register_hnode.add_argument('--project', required=True)
+        register_hnode.add_argument('--image', '--img', required=True)
+        register_hnode.set_defaults(func=headnode_create)
+        
+        #register set for hnic
+        register_hnic = register_parser_options.add_parser('hnic', parents=[get_name])
+        register_hnic.add_argument('name')
+        register_hnic.add_argument('--headnode', '--hnode', '--hn', required=True)
+        register_hnic.set_defaults(func=headnode_create_hnic)
+        
+        #register set for port
+        register_port = register_parser_options.add_parser('port', parents=[get_name])
+        register_port.add_argument('name')
+        register_port.add_argument('--switch', required=True)
+        register_port.set_defaults(func=port_register)
+        
         # TODO all of delete
 
 
