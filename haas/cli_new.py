@@ -371,7 +371,10 @@ class CommandListener(object):
         
         # TODO all of delete
 
-
+        #All of disconnect
+        remove_parser = subcommand_parsers.add_parser('disconnect', 'remove', 'detach')
+         
+        
         # TODO connect
         connect_parser = subcommand_parsers.add_parser('connect')
         connect_parser_options = connect_parser.add_subparsers()
@@ -494,7 +497,7 @@ def network_grant_project_access(project, network):
     do_put(url)
 
 
-def network_revoke_project_access(project, network):
+def network_remove_project(project, network):
     """Remove <project> from <network> access"""
     url = object_url('network', network, 'access', project)
     do_delete(url)
@@ -531,7 +534,7 @@ def project_connect_node(project, node):
     do_post(url, data={'node': node})
 
 
-def project_detach_node(project, node):
+def project_remove_node(project, node):
     """Detach <node> from <project>"""
     url = object_url('project', project, 'detach_node')
     do_post(url, data={'node': node})
@@ -639,7 +642,7 @@ def node_connect_network(node, nic, network, channel):
 
 
 
-def node_detach_network(node, nic, network):
+def node_remove_network(node, nic, network):
     """Detach <node> from the given <network> on the given <nic>"""
     url = object_url('node', node, 'nic', nic, 'detach_network')
     do_post(url, data={'network': network})
@@ -653,7 +656,7 @@ def headnode_connect_network(headnode, nic, network):
 
 
 
-def headnode_detach_network(headnode, hnic):
+def headnode_remove_network(headnode, hnic):
     """Detach <headnode> from the network on given <nic>"""
     url = object_url('headnode', headnode, 'hnic', hnic, 'detach_network')
     do_post(url)
@@ -760,7 +763,7 @@ def port_connect_nic(switch, port, node, nic):
 
 
 
-def port_detach_nic(switch, port):
+def port_remove_nic(switch, port):
     """Detach a <port> on a <switch> from whatever's connected to it"""
     url = object_url('switch', switch, 'port', port, 'detach_nic')
     do_post(url)
