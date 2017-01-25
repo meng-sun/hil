@@ -184,11 +184,6 @@ class CommandListener(object):
         else:
             '''error'''
 
-        # TODO connect
-        connect_parser = subcommand_parsers.add_parser('connect')
-        connect_parser_options = connect_parser.add_subparsers()
-        node_connect_network = connect_parser_options.add_parser('idk')
-
         print "tab completed"
         argcomplete.autocomplete(parser)
         print sys.argv
