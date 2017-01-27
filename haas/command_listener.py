@@ -4,9 +4,9 @@ class confirm(argparse.Action):
     def __init__(self,option_strings,dest,nargs=None,**kwargs):
         super(confirm, self).__init__(option_strings,dest,**kwargs)
     def __call__(self,parser,namespace,values,option_string=None):
-        confirm = input("are you sure about this change? [y/n] to continue\n")
-        if confirm == "y":
-            setattr(namespace,self.dest,values)
+        #confirm = input("are you sure about this change? [y/n] to continue\n")
+        #if confirm == "y":
+        setattr(namespace,self.dest,values)
 
 class CommandFramework(object):
     # TODO documentation
@@ -32,6 +32,9 @@ class CommandFramework(object):
         get_subtype_details.add_argument('user', metavar= '<username>')
         get_subtype_details.add_argument('password', metavar='<password>')
 
+        # get_subtype_details = argparse.ArgumentParser(add_help=False)
+        # get_subtype_details.add_argument('-d', nargs='+', required=True)
+       
         get_names = argparse.ArgumentParser(add_help=False)
         get_types = argparse.ArgumentParser(add_help=False)
         get_names.add_argument('name', metavar='<object name>', action='append')
@@ -60,9 +63,12 @@ class CommandFramework(object):
 
         
         node_register = node_subparsers.add_parser('register')
-        node_register_subtype = node_register.add_subparsers()
-        ipmi_node_register = node_register_subtype.add_parser('ipmi', parents = [get_name, get_subtype_details])
-        mock_node_register = node_register_subtype.add_parser('mock', parents = [get_name, get_subtype_details])
+        node_register_subtype = node_register.add_mutually_exclusive_group(required=True)
+        node_register_subtype.add_argument('--mock', nargs=3, metavar=('host','user','password') )
+        node_register_subtype.add_argument('--impi', nargs=3, metavar=('host','user','password') )
+        # node_register_subtype = node_register.add_subparsers()
+        # ipmi_node_register = node_register_subtype.add_parser('ipmi', parents = [get_name, get_subtype_details])
+        # mock_node_register = node_register_subtype.add_parser('mock', parents = [get_name, get_subtype_details])
         
         node_delete = node_subparsers.add_parser('delete')
 
