@@ -46,11 +46,10 @@ class confirm(argparse.Action):
 
 def set_func(function):
     class func_caller(argparse.Action):
-        #def __init__(self,option_strings,dest,nargs=None,**kwargs):
-        #    super(func_caller, self).__init__(option_strings,dest,**kwargs)
+        def __init__(self,option_strings,dest,nargs=None,**kwargs):
+            super(func_caller, self).__init__(option_strings,dest,**kwargs)
         def __call__(self,parser,namespace,values,option_string=None):
-            #parser.set_defaults(func=function)
-            #print parser
+            setattr(namespace, 'func', function)
             setattr(namespace,self.dest,values)
     return func_caller
 
@@ -357,6 +356,7 @@ class CommandListener(object):
         node_register_parser.set_defaults(func=node_register)
         
         node_delete_parser = node_subparsers.add_parser('delete', parents = [get_name])
+        #node_delete_parser.add_argument('--name', action=confirm)
         # fix confirm action, also add in recursive function
         node_delete_parser.set_defaults(func=node_delete)
 
@@ -376,10 +376,13 @@ class CommandListener(object):
 
         node_disconnect = node_subparsers.add_parser('disconnect',parents=[get_name])
         node_disconnects = node_disconnect.add_mutually_exclusive_group()
-        node_disconnects.add_argument('--network',nargs=2, metavar=('<network name>','<nic name>'), action=set_func(node_remove_network))
-        node_disconnects.add_argument('--project',nargs=1, metavar='<project name>')
-        node_disconnects.add_argument('--nic',nargs=1, metavar='<nic name>')
-        #node_disconnect.set_defaults(func=node_disconnect_redirect)
+        node_disconnects.add_argument('--network',action=set_func(empty),nargs=2, 
+                                      metavar=('<network name>','<nic name>')
+                                      )
+        node_disconnects.add_argument('--project',metavar='<project name>',
+                                      action=set_func(project_remove_node))
+        node_disconnects.add_argument('--nic', metavar='<nic name>')
+        node_disconnect.set_defaults(func=empty)
         #node_disconnect_partners = node_disconnect.add_subparsers()
         #node_disconnect_network = node_disconnect_partners.add_parser('network', parents=[get_name])
         #node_disconnect_network.set_defaults(func=node_remove_network)
@@ -778,6 +781,9 @@ def node_disconnect_redirect(args):
     for obj in range(len(possibilities)):
         if hasattr(args,possibilities[obj]):
             poss_func[obj](args)
+
+def empty(args):
+    print "is empty"
 
 
 # decide which version of node register to use
