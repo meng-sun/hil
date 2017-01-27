@@ -42,7 +42,6 @@ class confirm(argparse.Action):
         #confirm = subprocess.Popen(['read','-n','1','confirm','\n','echo','$confirm'], shell=True, stdout=subprocess.PIPE)
         #if confirm == "y":
         setattr(namespace,self.dest,values)
-        print "est"
 
 def set_func(function):
     class func_caller(argparse.Action):
@@ -311,16 +310,6 @@ class CommandListener(object):
         get_type = argparse.ArgumentParser(add_help=False)
         get_type.add_argument('type', metavar='<object type>')
 
-        get_subtype_details = argparse.ArgumentParser(add_help=False)
-        #get_subtype_details.add_argument('--host', metavar='<host>')
-        #get_subtype_details.add_argument('--user', metavar= '<username>')
-        #get_subtype_details.add_argument('--password',metavar='<password>')
-        
-        # get_names = argparse.ArgumentParser(add_help=False)
-        # get_types = argparse.ArgumentParser(add_help=False)
-        # get_names.add_argument('name', metavar='<object name>', action='append')
-        # get_types.add_argument('type', metavar='<object type>', action='append')
-
         # parser commands by object
         node_parser = subcommand_parsers.add_parser('node')
         node_subparsers = node_parser.add_subparsers()
@@ -340,16 +329,8 @@ class CommandListener(object):
         hnic_subparsers = hnic_parser.add_subparsers()
         port_parser = subcommand_parsers.add_parser('port')
         port_subparsers = port_parser.add_subparsers()
-
-
-
         
         node_register_parser = node_subparsers.add_parser('register', parents = [get_name])
-        #node_register_subtype = node_register_parser.add_subparsers()
-        #ipmi_node = node_register_subtype.add_parser('ipmi', parents = [get_name, get_subtype_details])
-        #mock_node = node_register_subtype.add_parser('mock', parents = [get_name, get_subtype_details])
-        #ipmi_node.set_defaults(func=ipmi_node_register)
-        #mock_node.set_defaults(func=mock_node_register)
         node_register_subtype = node_register_parser.add_mutually_exclusive_group(required=True)
         node_register_subtype.add_argument('--mock', nargs=3, metavar=('host','user','password') )
         node_register_subtype.add_argument('--impi', nargs=3, metavar=('host','user','password') )
@@ -360,51 +341,38 @@ class CommandListener(object):
         # fix confirm action, also add in recursive function
         node_delete_parser.set_defaults(func=node_delete)
 
-        # shortened
-        node = argparse.ArgumentParser(add_help=False)
-        node.add_argument('node_name')
-        nic = argparse.ArgumentParser(add_help=False)
-        nic.add_argument('nic_name')
-        node_network_relationship = argparse.ArgumentParser(add_help=False)
-        node_network_relationship.add_argument('node_name')
-        node_network_relationship.add_argument('nic_name')
-        node_network_relationship.add_argument('network_name')
-        node_project_relationship = argparse.ArgumentParser(add_help=False)
-        node_project_relationship.add_argument('node_name')
-        node_project_relationship.add_argument('project_name')
-
-
         node_disconnect = node_subparsers.add_parser('disconnect',parents=[get_name])
         node_disconnects = node_disconnect.add_mutually_exclusive_group()
-        node_disconnects.add_argument('--network',action=set_func(empty),nargs=2, 
+        node_disconnects.add_argument('--network',action=set_func(node_remove_network),nargs=2, 
                                       metavar=('<network name>','<nic name>')
                                       )
         node_disconnects.add_argument('--project',metavar='<project name>',
                                       action=set_func(project_remove_node))
-        node_disconnects.add_argument('--nic', metavar='<nic name>')
+        node_disconnects.add_argument('--nic', metavar='<nic name>', action=set_func(node_delete_nic))
         node_disconnect.set_defaults(func=empty)
-        #node_disconnect_partners = node_disconnect.add_subparsers()
-        #node_disconnect_network = node_disconnect_partners.add_parser('network', parents=[get_name])
-        #node_disconnect_network.set_defaults(func=node_remove_network)
-        #node_disconnect_project = node_disconnect_partners.add_parser('project', parents =[node_project_relationship])
-        #node_disconnect_project.set_defaults(func=project_remove_node)
-        #node_disconnect_nic = node_disconnect_partners.add_parser('nic',parents=[nic,node])
-        #node_disconnect_nic.set_defaults(func=node_delete_nic)
         # node_reset = node_subparsers.add_parser('reset')
         # reset children falls under reset?
 
         node_connect = node_subparsers.add_parser('connect')
-        node_connect_partners = node_connect.add_subparsers()
-        node_connect_net = node_connect_partners.add_parser('network')
-        node_connect_net.add_argument('channel')
-        node_connect_net.set_defaults(func=node_connect_network)
-        node_connect_project = node_connect_partners.add_parser('project')
-        node_connect_nic = node_connect_partners.add_parser('nic')
+        node_connects = node_connect.add_mutually_exclusive_group()
+        node_connects.add_argument('--network',action=set_func(node_connect_network),nargs=2,
+                                      metavar=('<network name>','<nic name>')
+                                      )
+        node_connects.add_argument('--project',metavar='<project name>',
+                                      action=set_func(project_connect_node))
+        node_connects.add_argument('--nic', metavar='<nic name>', action=set_func(node_register_nic))
 
-        node_show = node_subparsers.add_parser('show')
-        # add list
-        #switch parsers
-         
+        node_show = node_subparsers.add_parser('show',parents=[get_name])
+        node_show.set_defaults(func=show_node)
+
+        node_list = node_subparsers.add_parser('list')
+        node_lists = node_list.add_mutually_exclusive_group(required=True)
+        node_lists.add_argument('--project', '--proj', action=set_func(list_project_nodes))
+        node_lists.add_argument('--network', '--net', nargs=2, metavar = ('<network name>','<project name>'),action=set_func(list_network_attachments))
+        node_lists.add_argument('--free', dest='is_free', action='store_true')
+        node_lists.add_argument('--all', dest='is_free', action='store_false')
+        node_list.set_defaults(func=list_nodes)
+
         #headnode statements
         hn_reg = headnode_subparsers.add_parser('register', parents = [get_name])
         hn_reg.add_argument('--project', '--proj')
@@ -553,16 +521,6 @@ class CommandListener(object):
         if not list_networks.parse_args().project is None:
             list_networks.set_defaults(func=list_project_networks)
 
-        list_nodes = list_parser_options.add_parser('node')
-        list_nodes.add_argument('--project', '--proj')
-        list_nodes.add_argument('--network', '--net')
-        list_nodes.set_defaults(func=list_nodes)
-        if not list_nodes.parse_args().project is None:
-            list_nodes.set_defaults(func=list_project_nodes)
-        if not list_nodes.parse_args().network is None:
-            list.nodes.set_defaults(func=list_network_attachments)
-        list_nodes.add_argument('--free', action="store_true")
-        list_nodes.add_argument('--all', action="store_true")
 
         #All of disconnect and connect
         remove_parser = subcommand_parsers.add_parser('disconnect', 'remove', 'detach')
@@ -615,7 +573,7 @@ class CommandListener(object):
             print args
             args.func(args)
         except TypeError:
-            print "missing a required flag option"
+            print "check your namespace something is wrong"
             raise InvalidAPIArgumentsException()
 
 def serve(args):
@@ -775,18 +733,12 @@ def headnode_stop(headnode):
     do_post(url)
 
 
-def node_disconnect_redirect(args):
-    possibilities = ['network','project','nic']
-    poss_func = [node_remove_network, project_remove_node, node_delete_nic]
-    for obj in range(len(possibilities)):
-        if hasattr(args,possibilities[obj]):
-            poss_func[obj](args)
-
 def empty(args):
-    print "is empty"
+    """used to prevent argparse from throwing func not found
+    errors if the user forgets to include a option flag"""
+    pass
 
 
-# decide which version of node register to use
 def node_register(args):
     """Register a node named <node>, with the given type
         if obm is of type: ipmi then provide arguments
@@ -821,22 +773,6 @@ def node_register(args):
     url = object_url('node', args.name)
     do_put(url, data={"obm": obminfo})
 
-
-# problem with this method is that you can't load 
-# active subtypes into tab completition
-# it will always load all of them 
-def mock_node_register(args):
-    obm_api = "http://schema.massopencloud.org/haas/v0/obm/"
-    obminfo = {"type": obm_api + 'mock', "host": args.host,
-                       "user": args.user, "password": args.password
-                       }
-
-
-def ipmi_node_register(args):
-    obm_api = "http://schema.massopencloud.org/haas/v0/obm/"
-    obminfo = {"type": obm_api + 'ipmi', "host": args.host,
-                       "user": args.user, "password": args.password
-                       }
 
 
 def node_delete(args):
@@ -892,8 +828,16 @@ def headnode_delete_hnic(headnode, nic):
 
 def node_connect_network(args):
     """Connect <node> to <network> on given <nic> and <channel>"""
-    url = object_url('node', args.node_name, 'nic', args.nic_name, 'connect_network')
-    do_post(url, data={'network': args.network_name,
+    if hasattr(args,'network'):
+        node = args.name
+        nic = args.network[1]
+        network = args.network[0]
+    else:
+        node = args.node[0]
+        nic = args.node[1]
+        network = args.name
+    url = object_url('node', node, 'nic', nic, 'connect_network')
+    do_post(url, data={'network': network,
                        'channel': channel})
 
 
@@ -1040,10 +984,12 @@ def port_remove_nic(switch, port):
 
 
 
-def list_network_attachments(network, project):
+def list_network_attachments(args):
     """List nodes connected to a network
     <project> may be either "all" or a specific project name.
     """
+    network = args.network[0]
+    project = args.network[1]
     url = object_url('network', network, 'attachments')
 
     if project == "all":
@@ -1052,20 +998,18 @@ def list_network_attachments(network, project):
         do_get(url, params={'project': project})
 
 
-#@cmd
 def list_nodes(args):
     """List all nodes or all free nodes
-
     <is_free> may be either "all" or "free", and determines whether
         to list all nodes or all free nodes.
     """
-    print "init list_nodes"
-    if args.is_free not in ('all', 'free'):
-        raise TypeError("is_free must be either 'all' or 'free'")
-    print "init url"
-    print args.is_free
-    url = object_url('nodes', args.is_free)
-    print url
+    if args.is_free:
+        is_free = 'free'
+    else:
+        is_free = 'all'
+    #if args.is_free not in ('all', 'free'):
+    #    raise TypeError("is_free must be either 'all' or 'free'")
+    url = object_url('nodes', is_free)
     do_get(url)
 
 
@@ -1105,9 +1049,9 @@ def show_network(network):
 
 
 
-def show_node(node):
+def show_node(args):
     """Display information about a <node>"""
-    url = object_url('node', node)
+    url = object_url('node', args.name)
     do_get(url)
 
 
