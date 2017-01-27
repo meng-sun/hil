@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 # Copyright 2013-2014 Massachusetts Open Cloud Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +25,6 @@ import urllib
 import schema
 import abc
 import argparse
-import argcomplete
 import subprocess
 
 from functools import wraps
@@ -41,9 +39,9 @@ class confirm(argparse.Action):
         super(confirm, self).__init__(option_strings,dest,**kwargs)
     def __call__(self,parser,namespace,values,option_string=None):
         print "are you sure about this change? [y/n] to continue\n"
-        confirm = subprocess.Popen(['read','-n','1','confirm','\n','echo','$confirm'], shell=True, stdout=subprocess.PIPE)
-        if confirm == "y":
-            setattr(namespace,self.dest,values)
+        #confirm = subprocess.Popen(['read','-n','1','confirm','\n','echo','$confirm'], shell=True, stdout=subprocess.PIPE)
+        #if confirm == "y":
+        setattr(namespace,self.dest,values)
         print "est"
 
 class HTTPClient(object):
@@ -304,9 +302,9 @@ class CommandListener(object):
         get_type.add_argument('type', metavar='<object type>')
 
         get_subtype_details = argparse.ArgumentParser(add_help=False)
-        get_subtype_details.add_argument('host', metavar='<host>')
-        get_subtype_details.add_argument('user', metavar= '<username>')
-        get_subtype_details.add_argument('password',metavar='<password>')
+        #get_subtype_details.add_argument('--host', metavar='<host>')
+        #get_subtype_details.add_argument('--user', metavar= '<username>')
+        #get_subtype_details.add_argument('--password',metavar='<password>')
         
         get_names = argparse.ArgumentParser(add_help=False)
         get_types = argparse.ArgumentParser(add_help=False)
@@ -333,15 +331,39 @@ class CommandListener(object):
         port_parser = subcommand_parsers.add_parser('port')
         port_subparsers = port_parser.add_subparsers()
 
-        node_register = node_subparsers.add_parser('register')
-        node_register_subtype = node_register.add_subparsers()
-        ipmi_node_register = node_register_subtype.add_parser('ipmi', parents = [get_name, get_subtype_details])
-        mock_node_register = node_register_subtype.add_parser('mock', parents = [get_name, get_subtype_details])
-        node_register.set_defaults(func = node_register)
-        node_delete = node_subparsers.add_parser('delete')
-        node_delete.add_argument('name', action = confirm)
 
-        # current both types are supported
+        
+        node_register_parser = node_subparsers.add_parser('register', parents = [get_name])
+        #node_register_subtype = node_register_parser.add_subparsers()
+        #ipmi_node = node_register_subtype.add_parser('ipmi', parents = [get_name, get_subtype_details])
+        #mock_node = node_register_subtype.add_parser('mock', parents = [get_name, get_subtype_details])
+        #ipmi_node.set_defaults(func=ipmi_node_register)
+        #mock_node.set_defaults(func=mock_node_register)
+        node_register_subtype = node_register_parser.add_mutually_exclusive_group(required=True)
+        node_register_subtype.add_argument('--mock', nargs=3, metavar=('host','user','password') )
+        node_register_subtype.add_argument('--impi', nargs=3, metavar=('host','user','password') )
+        node_register_parser.set_defaults(func=node_register)
+        
+        node_del = node_subparsers.add_parser('delete', parents = [get_name])
+        # fix confirm action, also add in recursive function
+        node_del.set_defaults(func=node_delete)
+
+        node_disconnect = node_subparsers.add_parser('disconnect')
+        node_disconnect_partners = node_disconnect.add_subparsers()
+        node_disconnect_network = node_disconnect_partners.add_parser('network')
+        node_disconnect_project = node_disconnect_partners.add_parser('project')
+        node_disconnect_nic = node_disconnect_partners.add_parser('nic')
+        
+        # node_reset = node_subparsers.add_parser('reset')
+        # reset children falls under reset?
+
+        node_connect = node_subparsers.add_parser('connect')
+        node_connect_partners = node_connect.add_subparsers()
+        node_connect_network = node_connect_partners.add_parser('network')
+        node_connect_project = node_connect_partners.add_parser('project')
+        node_connect_nic = node_connect_partners.add_parser('nic')
+
+        node_show = node_subparsers.add_parser('show')
 
         """
         node_parser = subcommand_parsers.add_parser('node')
@@ -514,7 +536,7 @@ def serve(args):
     try:
         args.port = schema.And(
         schema.Use(int),
-        lambda n: MIN_PORT_NUMBER <= n <= MAX_PORT_NUMBER).validate(port)
+        lambda n: MIN_PORT_NUMBER <= n <= MAX_PORT_NUMBER).validate(args.port)
     except schema.SchemaError:
         sys.exit('Error: Invalid port. Must be in the range 1-65535.')
     except Exception as e:
@@ -529,7 +551,7 @@ def serve(args):
     # (via `rest_call`), though we don't use it directly:
     from haas import model, api, rest
     server.init(stop_consoles=True)
-    rest.serve(port, debug=debug)
+    rest.serve(args.port, debug=debug)
 
 
 def serve_networks():
@@ -666,7 +688,7 @@ def headnode_stop(headnode):
     url = object_url('headnode', headnode, 'stop')
     do_post(url)
 
-
+# decide which version of node register to use
 def node_register(args):
     """Register a node named <node>, with the given type
         if obm is of type: ipmi then provide arguments
@@ -674,17 +696,22 @@ def node_register(args):
     """
     obm_api = "http://schema.massopencloud.org/haas/v0/obm/"
     obm_types = ["ipmi", "mock"]
+    for obm in obm_types:
+        if hasattr(args,obm):
+            subtype = obm
+ 
+    details = getattr(args,subtype)
     # Currently the classes are hardcoded
     # In principle this should come from api.py
     # In future an api call to list which plugins are active will be added.
 
-    if args.subtype in obm_types:
-        if len(args.ipmi) == 3:
-            obminfo = {"type": obm_api + args.subtype, "host": args.ipmi[0],
-                       "user": args.ipmi[1], "password": args.ipmi[2]
+    if subtype in obm_types:
+        if len(details) == 3:
+            obminfo = {"type": obm_api + subtype, "host": details[0],
+                       "user": details[1], "password": details[2]
                        }
         else:
-            sys.stderr.write('ERROR: subtype ' + args.subtype +
+            sys.stderr.write('ERROR: subtype ' + subtype +
                              ' requires exactly 3 arguments\n')
             sys.stderr.write('<hostname> <ipmi-username> <ipmi-password>\n')
             return
@@ -697,10 +724,26 @@ def node_register(args):
     do_put(url, data={"obm": obminfo})
 
 
+# problem with this method is that you can't load 
+# active subtypes into tab completition
+# it will always load all of them 
+def mock_node_register(args):
+    obm_api = "http://schema.massopencloud.org/haas/v0/obm/"
+    obminfo = {"type": obm_api + 'mock', "host": args.host,
+                       "user": args.user, "password": args.password
+                       }
 
-def node_delete(node):
+
+def ipmi_node_register(args):
+    obm_api = "http://schema.massopencloud.org/haas/v0/obm/"
+    obminfo = {"type": obm_api + 'ipmi', "host": args.host,
+                       "user": args.user, "password": args.password
+                       }
+
+
+def node_delete(args):
     """Delete <node>"""
-    url = object_url('node', node)
+    url = object_url('node', args.name)
     do_delete(url)
 
 
