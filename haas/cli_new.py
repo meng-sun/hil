@@ -332,6 +332,7 @@ class CommandListener(object):
         port_subparsers = port_parser.add_subparsers()
 
 
+
         
         node_register_parser = node_subparsers.add_parser('register', parents = [get_name])
         #node_register_subtype = node_register_parser.add_subparsers()
@@ -364,6 +365,54 @@ class CommandListener(object):
         node_connect_nic = node_connect_partners.add_parser('nic')
 
         node_show = node_subparsers.add_parser('show')
+
+        #switch parsers
+        
+        #headnode statements
+        hn_reg = headnode_subparsers.add_parser('register', parents = [get_name])
+        hn_reg.add_argument('--project', '--proj')
+        hn_reg.add_argument('--image', '--img')
+        hn_delete = headnode_subparsers.add_parser('--delete', parents = [get_name])
+        hn_connect = headnode_subparsers.add_parser('connect', parents = [get_name])
+        hn_connect.add_argument('--network')
+        hn_connect.add_argument('--hnic')
+        hn_detach = headnode_subparsers.add_parser('disconnect', parents = [get_name])
+        hn_detach.add_argument('---hnic')
+        hn_start = headnode_subparsers.add_parser('start', parents = [get_name])
+        hn_stop = headnode_subparsers.add_parser('stop', parents = [get_name])
+        show_hn = headnode_subparsers.add_parser('show', parents = [get_name])
+        list_hn =  = headnode_subparsers.add_parser('list')
+        list_hn.add_argument('--project', 'proj')
+        list_hn.add_argument('-i', '--images')
+        
+        #nic statements
+        nic_parser.add_argument('--node')
+        nic_parser.add_argument('--switch')
+        nic_parser.add_argument('--port')
+        nic_register = nic_subparsers.add_parser('register', parents = [get_name])
+        nic_register.add_argument('--macaddr')
+        nic_delete = nic_subparsers.add_parser('delete', parents = [get_name])
+        nic_connect = nic_subparsers.add_parser('connect', parents = [get_name])
+        nic_disconnect = nic_subparsers.add_parser('disconnect')
+        
+        #hnic statements
+        hnic_parser.add_argument('--hnode', '--headnode')
+        hnic_register = hnic_subparsers.add_parser('register', parents = [get_name])
+        hnic_delete = hnic_subparsers.add_parser('delete')
+        #hnic_detach = hnic_subparsers.add_parser('detach')
+        #hnic_connect = hnic_subparsers.add_parser('connect')
+        #hnic_connect.add_argument('--network', '--net')
+        
+        #port statements 
+        port_parer.add_argument('--switch')
+        port_register_parser = port_subparsers.add_parser('register', parents = [get_name])        
+        port_delete_parser = port_subparsers.add_parser('delete', parents = [get_name])
+        port_detach_nic_parser = port_subparsers.add_parser('disconnect', parents = [get_name])
+        port_connect = port_subparsers.add_parser('connect', parents = [get_nmae])
+        port_connect.add_argument('--node')
+        port_connect.add_argument('--nic')
+        # current both types are supported
+
 
         """
         node_parser = subcommand_parsers.add_parser('node')
