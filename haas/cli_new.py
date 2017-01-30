@@ -406,18 +406,25 @@ class CommandListener(object):
         #switch parsers
          
         #headnode statements
-        hn_reg = headnode_subparsers.add_parser('register', parents = [get_name], action=set_func(headnode_create))
+        hn_reg = headnode_subparsers.add_parser('register', parents = [get_name])
         hn_reg.add_argument('--project', '--proj')
         hn_reg.add_argument('--image', '--img')
-        hn_delete = headnode_subparsers.add_parser('delete', parents = [get_name], action=set_func(headnode_delete))
-        hn_connect = headnode_subparsers.add_parser('connect', parents = [get_name], action=set_func(headnode_connect_network))
+        hn_reg.set_defaults(func=headnode_create)
+        hn_delete = headnode_subparsers.add_parser('delete', parents = [get_name])
+        hn_delete.set_defaults(func=headnode_delete)
+        hn_connect = headnode_subparsers.add_parser('connect', parents = [get_name])
         hn_connect.add_argument('--network')
         hn_connect.add_argument('--hnic')
-        hn_detach = headnode_subparsers.add_parser('disconnect', parents = [get_name], action=set_func(headnode_detach_network))
+        hn_connect.set_defaults(func=headnode_connect_network)
+        hn_detach = headnode_subparsers.add_parser('disconnect', parents = [get_name])
         hn_detach.add_argument('---hnic')
-        hn_start = headnode_subparsers.add_parser('start', parents = [get_name],action=set_func(headnode_start))
-        hn_stop = headnode_subparsers.add_parser('stop', parents = [get_name], action=set_func(headnode_stop)
-        show_hn = headnode_subparsers.add_parser('show', parents = [get_name], action=set_func(show_headnode))
+        hn_detach.set_defaults(func=headnode_detach_network)
+        hn_start = headnode_subparsers.add_parser('start', parents = [get_name])
+        hn_start.set_defaults(func=headnode_start)
+        hn_stop = headnode_subparsers.add_parser('stop', parents = [get_name])
+        hn_stop.set_defaults(func=headnode_stop)
+        show_hn = headnode_subparsers.add_parser('show', parents = [get_name])
+        show_hn.set_defaults(func=show_headnode)
         list_hn =  headnode_subparsers.add_parser('list')
         list_hn.add_argument('--project', '-proj', action=set_func(list_project_headnodes))
         list_hn.add_argument('-i', '--images', action=set_func(list_headnode_images))
@@ -917,6 +924,14 @@ def node_remove_network(args):
 
 def headnode_connect_network(headnode, nic, network):
     """Connect <headnode> to <network> on given <nic>"""
+    if hasattr(args, 'network'):
+        headnode = args.name
+        hnic = args.hnic
+        network = args.network
+    else:
+        headnode = args.node
+        hnic = args.hnic
+        network = args.network
     url = object_url('headnode', headnode, 'hnic', nic, 'connect_network')
     do_post(url, data={'network': network})
 
@@ -924,6 +939,12 @@ def headnode_connect_network(headnode, nic, network):
 
 def headnode_remove_network(headnode, hnic):
     """Detach <headnode> from the network on given <nic>"""
+    if hasattr(args, 'headnode'):
+        headnode = args.headnode
+        hnic = args.hnic
+    else:
+        headnode = args.name
+        hnic = args.hnic
     url = object_url('headnode', headnode, 'hnic', hnic, 'detach_network')
     do_post(url)
 
