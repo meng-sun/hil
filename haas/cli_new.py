@@ -36,7 +36,7 @@ MAX_PORT_NUMBER = 2**16 - 1
 
 class confirm(argparse.Action):
     def __init__(self,option_strings,dest,nargs=None,**kwargs):
-        super(confirm, self).__init__(option_strings,dest,**kwargs)
+        super(confirm, self).__init__(option_strings,dest,nargs,**kwargs)
     def __call__(self,parser,namespace,values,option_string=None):
         print "are you sure about this change? [y/n] to continue\n"
         #confirm = subprocess.Popen(['read','-n','1','confirm','\n','echo','$confirm'], shell=True, stdout=subprocess.PIPE)
@@ -47,7 +47,7 @@ class confirm(argparse.Action):
 def set_func(function):
     class func_caller(argparse.Action):
         def __init__(self,option_strings,dest,nargs=None,**kwargs):
-            super(func_caller, self).__init__(option_strings,dest,**kwargs)
+            super(func_caller, self).__init__(option_strings,dest,nargs,**kwargs)
         def __call__(self,parser,namespace,values,option_string=None):
             setattr(namespace, 'func', function)
             setattr(namespace,self.dest,values)
@@ -406,49 +406,51 @@ class CommandListener(object):
         #switch parsers
          
         #headnode statements
-        hn_reg = headnode_subparsers.add_parser('register', parents = [get_name])
+        hn_reg = headnode_subparsers.add_parser('register', parents = [get_name], action=set_func(headnode_create))
         hn_reg.add_argument('--project', '--proj')
         hn_reg.add_argument('--image', '--img')
-        hn_delete = headnode_subparsers.add_parser('delete', parents = [get_name])
-        hn_connect = headnode_subparsers.add_parser('connect', parents = [get_name])
+        hn_delete = headnode_subparsers.add_parser('delete', parents = [get_name], action=set_func(headnode_delete))
+        hn_connect = headnode_subparsers.add_parser('connect', parents = [get_name], action=set_func(headnode_connect_network))
         hn_connect.add_argument('--network')
         hn_connect.add_argument('--hnic')
-        hn_detach = headnode_subparsers.add_parser('disconnect', parents = [get_name])
+        hn_detach = headnode_subparsers.add_parser('disconnect', parents = [get_name], action=set_func(headnode_detach_network))
         hn_detach.add_argument('---hnic')
-        hn_start = headnode_subparsers.add_parser('start', parents = [get_name])
-        hn_stop = headnode_subparsers.add_parser('stop', parents = [get_name])
-        show_hn = headnode_subparsers.add_parser('show', parents = [get_name])
+        hn_start = headnode_subparsers.add_parser('start', parents = [get_name],action=set_func(headnode_start))
+        hn_stop = headnode_subparsers.add_parser('stop', parents = [get_name], action=set_func(headnode_stop)
+        show_hn = headnode_subparsers.add_parser('show', parents = [get_name], action=set_func(show_headnode))
         list_hn =  headnode_subparsers.add_parser('list')
-        list_hn.add_argument('--project', '-proj')
-        list_hn.add_argument('-i', '--images')
+        list_hn.add_argument('--project', '-proj', action=set_func(list_project_headnodes))
+        list_hn.add_argument('-i', '--images', action=set_func(list_headnode_images))
         
         #nic statements
-        #nic_parser.add_argument('--node')
-        #nic_parser.add_argument('--switch')
-        #nic_parser.add_argument('--port')
-        nic_register = nic_subparsers.add_parser('register', parents = [get_name])
+        nic_parser.add_argument('--node')
+        nic_parser.add_argument('--switch')
+        nic_parser.add_argument('--port')
+        nic_register = nic_subparsers.add_parser('register', parents = [get_name], action=set_func())
         nic_register.add_argument('--macaddr')
-        nic_delete = nic_subparsers.add_parser('delete', parents = [get_name])
-        nic_connect = nic_subparsers.add_parser('connect', parents = [get_name])
-        nic_disconnect = nic_subparsers.add_parser('disconnect')
+        nic_delete = nic_subparsers.add_parser('delete', parents = [get_name], action=set_func(node_delete_nic))
+        nic_connect = nic_subparsers.add_parser('connect', parents = [get_name, action=set_func(port_connect)])
+        nic_disconnect = nic_subparsers.add_parser('disconnect', action=set_func(port_detach_nic))
         
         #hnic statements
         hnic_parser.add_argument('--hnode', '--headnode')
-        hnic_register = hnic_subparsers.add_parser('register', parents = [get_name])
-        hnic_delete = hnic_subparsers.add_parser('delete')
-        #hnic_detach = hnic_subparsers.add_parser('detach')
-        #hnic_connect = hnic_subparsers.add_parser('connect')
-        #hnic_connect.add_argument('--network', '--net')
+        hnic_register = hnic_subparsers.add_parser('register', parents = [get_name], action=set_func(headnode_create_hnic))
+        hnic_delete = hnic_subparsers.add_parser('delete', parents = [get_name], action=set_func(headnode_delete_hnic))
+        # hnic_detach = hnic_subparsers.add_parser('detach')
+        # hnic_connect = hnic_subparsers.add_parser('connect')
+        # hnic_connect.add_argument('--network', '--net')
         
         #port statements 
         port_parser.add_argument('--switch')
-        port_register_parser = port_subparsers.add_parser('register', parents = [get_name])        
-        port_delete_parser = port_subparsers.add_parser('delete', parents = [get_name])
-        port_detach_nic_parser = port_subparsers.add_parser('disconnect', parents = [get_name])
-        port_connect = port_subparsers.add_parser('connect', parents = [get_name])
+        port_register_parser = port_subparsers.add_parser('register', parents = [get_name], action=set_func(port_register))        
+        port_delete_parser = port_subparsers.add_parser('delete', parents = [get_name], action=set_func(port_detach))
+        port_detach_nic_parser = port_subparsers.add_parser('disconnect', parents = [get_name], action=set_func(port_detach_nic))
+        port_connect = port_subparsers.add_parser('connect', parents = [get_name], action=set_func(port_connect_nic))
         port_connect.add_argument('--node')
         port_connect.add_argument('--nic')
-        # current both types are supported
+        # currently both types are supported
+
+        #network statements
         
 
         """
