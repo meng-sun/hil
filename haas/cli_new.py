@@ -424,15 +424,15 @@ class CommandListener(object):
         
         #hnic statements
         hnic_parser.add_argument('--hnode', '--headnode')
-        hnic_register = hnic_subparsers.add_parser('register', parents = [get_name], action=set_func(headnode_create_hnic))
-        hnic_delete = hnic_subparsers.add_parser('delete', parents = [get_name], action=set_func(headnode_delete_hnic))
+        hnic_register = hnic_subparsers.add_parser('register', parents = [get_name])
+        hnic_register.set_defaults(func=headnode_create_hnic)
+        hnic_delete = hnic_subparsers.add_parser('delete', parents = [get_name])
+        hnic_delete.set_defaults(func=headnode_delete_hnic)
         # hnic_detach = hnic_subparsers.add_parser('detach')
         # hnic_connect = hnic_subparsers.add_parser('connect')
         # hnic_connect.add_argument('--network', '--net')
-        
-        #port statements 
-        port_parser.add_argument('--switch')
-        port_register_parser = port_subparsers.add_parser('register', parents = [get_name], action=set_func(port_register))        
+
+        #port parsers
         port_delete_parser = port_subparsers.add_parser('delete', parents = [get_name], action=set_func(port_detach))
         port_detach_nic_parser = port_subparsers.add_parser('disconnect', parents = [get_name], action=set_func(port_detach_nic))
         port_connect = port_subparsers.add_parser('connect', parents = [get_name], action=set_func(port_connect_nic))
@@ -441,7 +441,50 @@ class CommandListener(object):
         # currently both types are supported
 
         #network statements
-        
+        net_create = network_subparser.add_parser('register', parent= [get_name])
+        net_create.set_defaults(func=network_create)
+        net_create.add_argument('--owner')
+        net_create.add_argument('--access')
+        net_create.add_argument('--id')
+        net_create.add_argument('--simple', action=set_func(network_create_simple))
+        net_delete = network_subparser.add_parser('delete', parent=[get_name])
+        net_delete.set_defaults(func=network_delete)
+        net_show = network_subparser.add_parser('show', parent=[get_name])
+        net_show.set_defaults(func=shoe_network)
+        net_list = network_subparser.add_parser('list')
+        net_list.set_defaults(func=list_network)
+        net_list.add_arguments('--project', '--proj', action=set_func(list_project_network)
+        net_list.add_arguments('--attachments', action=set_func(list_network_attachments))
+        net_connect = network_subparser.add_parser('connect', parent=[get_name])
+        net_connect.add_argument('--headnode', '--hnode', action=set_func(headnode_connect_project))
+        net_connect.add_argument('--hnic')
+        net_connect.add_argument('--node', action=set_func(node_connect_network))
+        net_connect.add_argument('--project', '--proj', action=set_func(network_grant_project_access))
+        net_dis = network_subparser.add_parser('disconnect', parent=[get_name])
+        net_dis.add_argument('--project', '--proj', action=set_func(network_remove_project_access))
+        net_dis.add_argument('--headnode', '--hnode', action=set_func(headnode_remove_network))
+        net_dis.add_argument('--hnic')
+        net_dis.add_argument('--node', action=set_func(node_remove_network))
+        net_dis.add_argument('--nic')
+
+        #project parser
+        proj_create = project_subparser.add_parser('register', parent=[get_name])
+        proj_create.set_defaults(func=project_create)
+        proj_delete = project_subparser.add_parser('delete', parent=[get_name])
+        proj_delete.set_defaults(func=project_delete)
+        proj_connect = project_subparser.add_parser('connect', parent=[get_name])
+        proj_connect.add_argument('--node', action=set_func(project_connect_node))
+        proj_connect.add_argument('--network', '--net', action=set_func(network_grant_project_access))
+        proj_connect.add_argument('--user', action=set_func(user_add_project))
+        proj_dis = project_subparser.add_parser('disconnect', parent=[get_name])
+        proj_dis.add_argument('--user', action=set_func(user_remove_project))
+        proj_dis.add_argument('--network', '--net', action=set_func(network_remove_project))
+        proj_dis.add_argument('--project', '--proj', action=set_func(project_remove_node))
+        proj_list = project_subparser.add_parser('list')
+        proj_list.set_defaults(func=list_project)
+        proj_list.add_argument('--node', action=set_func(list_project_nodes))
+        proj_list.add_argument('--network', action=set_func(list_project_networks))
+        proj_list.add_argument('--headnode', '--hnode', action=set_func(list_project_headnode))
 
         """
         node_parser = subcommand_parsers.add_parser('node')
@@ -686,6 +729,7 @@ def list_projects():
 
 def user_add_project(user, project):
     """Add <user> to <project>"""
+    
     url = object_url('/auth/basic/user', user, 'add_project')
     do_post(url, data={'project': project})
 
