@@ -453,8 +453,8 @@ class CommandListener(object):
         net_show.set_defaults(func=shoe_network)
         net_list = network_subparser.add_parser('list')
         net_list.set_defaults(func=list_network)
-        net_list.add_arguments('--project', '--proj', action=set_func(list_project_network)
-        net_list.add_arguments('--attachments', action=set_func(list_network_attachments))
+        net_list.add_argument('--project', '--proj', action=set_func(list_project_network)
+        net_list.add_argument('--attachments', action=set_func(list_network_attachments))
         net_connect = network_subparser.add_parser('connect', parent=[get_name])
         net_connect.add_argument('--headnode', '--hnode', action=set_func(headnode_connect_project))
         net_connect.add_argument('--hnic')
@@ -729,25 +729,48 @@ def list_projects():
 
 def user_add_project(user, project):
     """Add <user> to <project>"""
-    
+    if hasattr(args, 'project'):
+        user = args.name
+        project = args.project
+    else:
+        user = args.user
+        project = args.name
     url = object_url('/auth/basic/user', user, 'add_project')
     do_post(url, data={'project': project})
 
 
 def user_remove_project(user, project):
     """Remove <user> from <project>"""
+    if hasattr(args, 'project'):
+        user = args.name
+        project = args.project
+    else:
+        user = args.user
+        project = args.name
     url = object_url('/auth/basic/user', user, 'remove_project')
     do_post(url, data={'project': project})
 
 
 def network_grant_project_access(project, network):
     """Add <project> to <network> access"""
+    if hasattr(args, 'project'):
+        project = args.project
+        network = args.name
+    else:
+        project = args.name
+        network = args.network
     url = object_url('network', network, 'access', project)
     do_put(url)
 
 
 def network_remove_project(project, network):
     """Remove <project> from <network> access"""
+    if hasattr(args, 'project'):
+        project = args.project
+        network = args.name
+    else:
+        project = args.name
+        network = args.network
     url = object_url('network', network, 'access', project)
     do_delete(url)
 
@@ -1225,7 +1248,7 @@ def help(*commands):
     if not commands:
         sys.stdout.write('Usage: %s <command> <arguments...> \n' % sys.argv[0])
         sys.stdout.write('Where <command> is one of:\n')
-        commands = sorted(command_dict.keys())
+        commands=sorted(command_dict.keys())
     for name in commands:
         # For each command, print out a summary including the name, arguments,
         # and the docstring (as a #comment).
