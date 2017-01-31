@@ -535,6 +535,7 @@ class CommandListener(object):
                               action=set_func(network_remove_project))
         proj_dis.add_argument('--project', '--proj',
                               action=set_func(project_remove_node))
+        proj_dis.add_argument('--node', action=set_func(project_remove_node))
         proj_list=project_subparsers.add_parser('list')
         proj_list.set_defaults(func=list_projects)
         proj_list.add_argument('--project', '--proj')
@@ -656,11 +657,11 @@ def user_remove_project(user, project):
 def network_grant_project_access(args):
     """Add <project> to <network> access"""
     if hasattr(args, 'network'):
-        network = args.name
-        project = args.project
-    else:
         network = args.network
         project = args.name
+    else:
+        network = args.name
+        project = args.project
     url = object_url('network', network, 'access', project)
     do_put(url)
 
@@ -683,9 +684,9 @@ def project_create(args):
     do_put(url)
 
 
-def project_delete(project):
+def project_delete(args):
     """Delete <project>"""
-    url = object_url('project', project)
+    url = object_url('project', args.name)
     do_delete(url)
 
 
@@ -706,16 +707,28 @@ def headnode_delete(args):
     do_delete(url)
 
 
-def project_connect_node(project, node):
+def project_connect_node(args):
     """Connect <node> to <project>"""
+    if hasattr(args, 'project'):
+        node = args.name
+        project = args.project
+    else:
+        node = args.node
+        project = args.name
     url = object_url('project', project, 'connect_node')
     do_post(url, data={'node': node})
 
 
 def project_remove_node(args):
     """Detach <node> from <project>"""
-    url = object_url('project', args.project_name, 'detach_node')
-    do_post(url, data={'node': args.node_name})
+    if hasattr(args, 'project'):
+        node = args.name
+        project = args.project
+    else:
+        node = args.node
+        project = args.name
+    url = object_url('project', project, 'detach_node')
+    do_post(url, data={'node': node})
 
 
 def headnode_start(args):
