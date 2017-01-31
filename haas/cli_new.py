@@ -366,12 +366,12 @@ class CommandListener(object):
         # node_reset = node_subparsers.add_parser('reset')
         # reset children falls under reset?
 
-        node_connect = node_subparsers.add_parser('connect', parents=[get_name])
+        node_connect = node_subparsers.add_parser('connect')
         node_connects = node_connect.add_mutually_exclusive_group(required=True)
         node_connects.add_argument('--network',
                                    action=set_func(node_connect_network),
-                                   nargs=3,
-                                   metavar=('<network name>', '<nic name>', '<channel>')
+                                   nargs=2,
+                                   metavar=('<network name>', '<nic name>')
                                    )
         node_connects.add_argument('--project', metavar='<project name>',
                                    action=set_func(project_connect_node))
@@ -389,6 +389,20 @@ class CommandListener(object):
         node_lists.add_argument('--free', dest='is_free', action='store_true')
         node_lists.add_argument('--all', dest='is_free', action='store_false')
         node_list.set_defaults(func=list_nodes)
+        
+        #user parsers
+        user_reg = user_subparsers.add_parser('register', parents=[get_name])
+        user_reg.set_defaults(func=user_create)
+        user_reg.add_argument('--password', '--pass')
+        user_reg.add_argument('--admin', action='store_true')
+        user_del = user_subparsers.add_parser('delete', parents=[get-name])
+        user_del.set_defaults(func=user_delete)
+        user_con = user_subparsers.add_parser('connect', parents=[get_name])
+        user_con.set_defaults(func=user_add_project)
+        user_con.add_argument('--project', '--proj')
+        user_dis = user_subparsers.add_parser('disconnect', parents=[get_name])
+        user_dis.set_defaults(func=user_remove_project)
+        user_dis.add_argument('--project', '--proj')
 
         # headnode statements
         hn_reg = headnode_subparsers.add_parser('register', parents=[get_name])
@@ -500,24 +514,22 @@ class CommandListener(object):
                                '<network name>'),
                                action=set_func(list_network_attachments))
         net_connect=network_subparsers.add_parser('connect', parents=[get_name])
-        net_connects = net_connect.add_mutually_exclusive_group(required=True)
-        net_connects.add_argument(
-            '--headnode', '--hnode', nargs=2, metavar=('<headnode name>','<hnic name>'),  action=set_func(headnode_connect_network))
-        net_connects.add_argument(
-            '--node', nargs=3, metavar=('<node name>','<nic name>', '<channel>'), action=set_func(node_connect_network))
-        net_connects.add_argument(
+        net_connect.add_argument(
+            '--headnode', '--hnode', action=set_func(headnode_connect_network))
+        net_connect.add_argument('--hnic')
+        net_connect.add_argument(
+            '--node', action=set_func(node_connect_network))
+        net_connect.add_argument(
             '--project', '--proj',
             action=set_func(network_grant_project_access))
         net_dis=network_subparsers.add_parser('disconnect', parents=[get_name])
-        net_disconnects = net_dis.add_mutually_exclusive_group(required=True)
-        net_disconnects.add_argument('--project', '--proj',
+        net_dis.add_argument('--project', '--proj',
                              action=set_func(network_remove_project))
-        net_disconnects.add_argument('--headnode', '--hnode', nargs=2,
-                                     metavar=('<headnode name>','<hnic name>'),
-                             action=set_func(headnode_remove_network))
-        net_disconnects.add_argument('--node', nargs=2,
-                                     metavar=('<node name>','<nic name>'),
-                                     action=set_func(node_remove_network))
+        net_dis.add_argument('--headnode', '--hnode',
+                             action=set_func(node_remove_network))
+        net_dis.add_argument('--hnic')
+        net_dis.add_argument('--node', action=set_func(headnode_remove_network))
+        net_dis.add_argument('--nic')
        
         # project parser
         proj_create=project_subparsers.add_parser('register', parents=[get_name])
@@ -632,9 +644,9 @@ def network_delete(args):
     do_delete(url)
 
 
-def user_delete(username):
+def user_delete(args):
     """Delete the user <username>"""
-    url = object_url('/auth/basic/user', username)
+    url = object_url('/auth/basic/user', args.name)
     do_delete(url)
 
 
@@ -644,14 +656,26 @@ def list_projects():
     do_get(url)
 
 
-def user_add_project(user, project):
+def user_add_project(args):
     """Add <user> to <project>"""
+    if hasattr(args, 'user'):
+        user = args.user
+        project = args.name
+    else:
+        user = args.name
+        project = args.project
     url = object_url('/auth/basic/user', user, 'add_project')
     do_post(url, data={'project': project})
 
 
-def user_remove_project(user, project):
+def user_remove_project(args):
     """Remove <user> from <project>"""
+    if hasattr(args, 'user'):
+        user = args.user
+        project = args.name
+    else:
+        user = args.name
+        project = args.project
     url = object_url('/auth/basic/user', user, 'remove_project')
     do_post(url, data={'project': project})
 
@@ -847,11 +871,9 @@ def node_connect_network(args):
         node = args.name
         nic = args.network[1]
         network = args.network[0]
-        channel = args.network[2]
     else:
         node = args.node[0]
         nic = args.node[1]
-        channel = args.node[2]
         network = args.name
     url = object_url('node', node, 'nic', nic, 'connect_network')
     do_post(url, data={'network': network,
@@ -875,25 +897,25 @@ def node_remove_network(args):
 def headnode_connect_network(args):
     """Connect <headnode> to <network> on given <nic>"""
     if hasattr(args, 'network'):
+        headnode = args.headnode
+        hnic = args.hnic
+        network = args.name
+    else:
         headnode = args.name
         hnic = args.hnic
         network = args.network
-    else:
-        headnode = args.headnode[0]
-        hnic = args.headnode[1]
-        network = args.name
-    url = object_url('headnode', headnode, 'hnic', hnic, 'connect_network')
+    url = object_url('headnode', headnode, 'hnic', nic, 'connect_network')
     do_post(url, data={'network': network})
 
 
 def headnode_remove_network(args):
     """Detach <headnode> from the network on given <nic>"""
-    if not hasattr(args, 'headnode'):
-        headnode = args.name
+    if hasattr(args, 'network'):
+        headnode = args.headnode
         hnic = args.hnic
     else:
-        headnode = args.headnode[0]
-        hnic = args.headnode[1]
+        headnode = args.name
+        hnic = args.hnic
     url = object_url('headnode', headnode, 'hnic', hnic, 'detach_network')
     do_post(url)
 
