@@ -314,6 +314,11 @@ class CommandListener(object):
                                 help="1")
         serve_networks_parser.set_defaults(func=serve_networks)
 
+        create_first_admin = subcommand_parsers.add_parser('admin')
+        create_first_admin.add_argument('name')
+        create_first_admin.add_argument('password')
+        create_first_admin.set_defaults(func=create_admin_user)
+
         # PARENT PARSERS: shared options
         get_name = argparse.ArgumentParser(add_help=False)
         get_name.add_argument('name', metavar='<object name>')
@@ -345,7 +350,7 @@ class CommandListener(object):
         node_register_parser = node_subparsers.add_parser('register',parents=[get_name])
         node_register_subtype = node_register_parser.add_mutually_exclusive_group(required=True)
         node_register_subtype.add_argument('--mock', nargs=3, metavar=('host', 'user', 'password'))
-        node_register_subtype.add_argument('--impi', nargs=3,metavar=('host', 'user', 'password'))
+        node_register_subtype.add_argument('--impi', nargs=3, metavar=('host', 'user', 'password'))
         node_register_parser.set_defaults(func=node_register)
 
         node_delete_parser = node_subparsers.add_parser('delete', parents=[get_name])
@@ -390,6 +395,15 @@ class CommandListener(object):
         node_lists.add_argument('--all', dest='is_free', action='store_false')
         node_list.set_defaults(func=list_nodes)
 
+        node_console = node_subparsers.add_parser('console')
+        node_console_actions = node_console.add_subparsers()
+        node_console_show = node_console_actions.add_parser('show', parents=[get_name])
+        node_console_show.set_defaults(func=show_console)
+        node_console_start = node_console_actions.add_parser('start', parents=[get_name])
+        node_console_start.set_defaults(func=start_console)
+        node_console_stop = node_console_actions.add_parser('stop', parents=[get_name])
+        node_console_stop.set_defaults(func=stop_console)
+
         # headnode statements
         hn_reg = headnode_subparsers.add_parser('register', parents=[get_name])
         hn_reg.add_argument('--project', '--proj', required=True)
@@ -421,19 +435,6 @@ class CommandListener(object):
  
         
         # nic statements
-        
-        # nic_connect = nic_subparsers.add_parser('connect', parents =
-        #  [get_name])
-        # not mutually exclusive because there's only one option rn
-        # nic_connect.add_argument('--port', nargs=3, metavar=('switch',
-        #'port','node'),
-        #                         action=set_func(port_connect_nic),
-        #required=True)
-        # nic_disconnect = nic_subparsers.add_parser('disconnect')
-        # nic_disconnect.add_argument('--port',nargs=2,metavar=('switch','port'),
-        #                            required=True)
-        # nic_disconnect.set_defaults(func=port_detach_nic)
-        #^dont actually need the get_name...also this is throwing error?
         nic_register = nic_subparsers.add_parser(
             'register', parents=[get_name])
         nic_register.set_defaults(func=node_register_nic)
@@ -535,8 +536,7 @@ class CommandListener(object):
         proj_dis.add_argument('--user', action=set_func(user_remove_project))
         proj_dis.add_argument('--network', '--net',
                               action=set_func(network_remove_project))
-        proj_dis.add_argument('--project', '--proj',
-                              action=set_func(project_remove_node))
+        proj_dis.add_argument('--node', action=set_func(project_remove_node))
         proj_list=project_subparsers.add_parser('list')
         proj_list.set_defaults(func=list_projects)
         proj_list.add_argument('--project', '--proj')
@@ -545,7 +545,38 @@ class CommandListener(object):
             '--network', action=set_func(list_project_networks), nargs='?')
         proj_list.add_argument('--headnode', '--hnode',
                                action=set_func(list_project_headnodes), nargs='?')
-         
+
+        # switch parser
+        switch_register_parser = switch_subparsers.add_parser('register', parents=[get_name])
+        switch_registers = switch_register_parser.add_mutually_exclusive_group(required=True)
+        switch_registers.add_argument('--nexus', nargs=4, metavar=('host','user','password', 'vlan'))
+        switch_registers.add_argument('--mock', nargs=3, metavar=('host','user','password'))
+        switch_registers.add_argument('--powerconnect55xx', nargs=3, metavar=('host','user','password'))
+        switch_registers.add_argument('--brocade', nargs=4, metavar=('host','user','pwd', 'interface'))
+        switch_register_parser.set_defaults(func=switch_register)
+
+        switch_delete_parser = switch_subparsers.add_parser('delete', parents=[get_name])
+        switch_delete_parser.set_defaults(func=switch_delete)
+        switch_show = switch_subparsers.add_parser('show', parents=[get_name])
+        switch_show.set_defaults(func=show_switch)
+        switch_list = switch_subparsers.add_parser('list')
+        switch_list.set_defaults(func=list_switches)
+
+        # user parser
+        user_register_parser = user_subparsers.add_parser('register', parents=[get_name])
+        user_register_parser.add_argument('password')
+        # ^is a password required?
+        user_register_parser.add_argument('--admin', action='store_true')
+        user_register_parser.set_defaults(func=user_create)
+        user_delete_parser = user_subparsers.add_parser('delete', parents=[get_name])
+        user_delete_parser.set_defaults(func=user_delete)
+        user_connect = user_subparsers.add_parser('connect', parents=[get_name])
+        user_connect.add_argument('--project', required=True)
+        user_connect.set_defaults(func=user_add_project)
+        user_disconnect = user_subparsers.add_parser('disconnect', parents=[get_name])
+        user_disconnect.add_argument('--project', required=True)
+        user_disconnect.set_defaults(func=user_remove_project)
+
         args = parser.parse_args(sys.argv[1:])
         try:
             print args
@@ -575,8 +606,8 @@ def serve(args):
     server.init(stop_consoles=True)
     rest.serve(args.port, debug=debug)
 
-
-def serve_networks():
+# test if this'll screw up service
+def serve_networks(args):
     """Start the HaaS networking server"""
     from haas import model, deferred
     from time import sleep
@@ -598,10 +629,15 @@ def user_create(args):
     <is_admin> may be either "admin" or "regular", and determines whether
     the user has administrative priveledges.
     """
+    if args.admin:
+        is_admin = "admin"
+    else:
+        is_admin = "regular"
+
     url = object_url('/auth/basic/user', args.name)
     do_put(url, data={
         'password': args.password,
-        'is_admin': args.is_admin,
+        'is_admin': is_admin,
     })
 
 
@@ -631,26 +667,39 @@ def network_delete(args):
     do_delete(url)
 
 
-def user_delete(username):
+def user_delete(args):
     """Delete the user <username>"""
+    username = args.name
     url = object_url('/auth/basic/user', username)
     do_delete(url)
 
 
-def list_projects():
+def list_projects(args):
     """List all projects"""
     url = object_url('projects')
     do_get(url)
 
 
-def user_add_project(user, project):
+def user_add_project(args):
     """Add <user> to <project>"""
+    if hasattr(args, 'project'):
+        user = args.name
+        project = args.project
+    else:
+        project= args.name
+        user = args.user
     url = object_url('/auth/basic/user', user, 'add_project')
     do_post(url, data={'project': project})
 
 
-def user_remove_project(user, project):
+def user_remove_project(args):
     """Remove <user> from <project>"""
+    if hasattr(args, 'project'):
+        user = args.name
+        project = args.project
+    else:
+        project= args.name
+        user = args.user
     url = object_url('/auth/basic/user', user, 'remove_project')
     do_post(url, data={'project': project})
 
@@ -685,9 +734,9 @@ def project_create(args):
     do_put(url)
 
 
-def project_delete(project):
+def project_delete(args):
     """Delete <project>"""
-    url = object_url('project', project)
+    url = object_url('project', args.name)
     do_delete(url)
 
 
@@ -906,11 +955,15 @@ def switch_register(org_args):
     backend. Ideally, this should be taken care of in the driver itself or
     client library (work-in-progress) should manage it.
     """
-    subtype = args.subtype
-    args = [org_args.host, org_args.user, org_args.password]
+    for sub_type in ["nexus", "mock", "powerconnect55xx", "brocade"]:
+        if getattr(org_args, sub_type) is not None:
+            args = getattr(org_args, sub_type)
+            subtype = sub_type
+
+    switch = org_args.name
     switch_api = "http://schema.massopencloud.org/haas/v0/switches/"
+
     if subtype == "nexus":
-        args = args.append(org_args.dummy_vlan)
         if len(args) == 4:
             switchinfo = {
                 "type": switch_api + subtype,
@@ -925,7 +978,6 @@ def switch_register(org_args):
                                '<dummy_vlan_no>\n'))
             return
     elif subtype == "mock":
-        args = args.mock
         if len(args) == 3:
             switchinfo = {"type": switch_api + subtype, "hostname": args[0],
                           "username": args[1], "password": args[2]}
@@ -935,7 +987,6 @@ def switch_register(org_args):
             sys.stderr.write('<hostname> <username> <password>\n')
             return
     elif subtype == "powerconnect55xx":
-        args = args.powerconnect55xx
         if len(args) == 3:
             switchinfo = {"type": switch_api + subtype, "hostname": args[0],
                           "username": args[1], "password": args[2]}
@@ -945,7 +996,6 @@ def switch_register(org_args):
                                '<hostname> <username> <password>\n'))
             return
     elif subtype == "brocade":
-        args = args.brocade
         if len(args) == 4:
             switchinfo = {"type": switch_api + subtype, "hostname": args[0],
                           "username": args[1], "password": args[2],
@@ -967,13 +1017,14 @@ def switch_register(org_args):
     do_put(url, data=switchinfo)
 
 
-def switch_delete(switch):
+def switch_delete(args):
     """Delete a <switch> """
+    switch = args.name
     url = object_url('switch', switch)
     do_delete(url)
 
 
-def list_switches():
+def list_switches(args):
     """List all switches"""
     url = object_url('switches')
     do_get(url)
@@ -1070,7 +1121,7 @@ def list_project_networks(args):
 
 def show_switch(args):
     """Display information about <switch>"""
-    url = object_url('switch', args.switch)
+    url = object_url('switch', args.name)
     do_get(url)
 
 
@@ -1113,25 +1164,28 @@ def list_headnode_images(args):
     do_get(url)
 
 
-def show_console(node):
+def show_console(args):
     """Display console log for <node>"""
+    node = args.name
     url = object_url('node', node, 'console')
     do_get(url)
 
 
-def start_console(node):
+def start_console(args):
     """Start logging console output from <node>"""
+    node = args.name
     url = object_url('node', node, 'console')
     do_put(url)
 
 
-def stop_console(node):
+def stop_console(args):
+    node = args.name
     """Stop logging console output from <node> and delete the log"""
     url = object_url('node', node, 'console')
     do_delete(url)
 
 
-def create_admin_user(username, password):
+def create_admin_user(args):
     """Create an admin user. Only valid for the database auth backend.
 
     This must be run on the HaaS API server, with access to haas.cfg and the
@@ -1142,6 +1196,8 @@ def create_admin_user(username, password):
     have an initial admin, you can (and should) create additional users via
     the API.
     """
+    username = args.name
+    password = args.password
     if not config.cfg.has_option('extensions', 'haas.ext.auth.database'):
         sys.exit("'make_inital_admin' is only valid with the database auth"
                  " backend.")
@@ -1152,7 +1208,7 @@ def create_admin_user(username, password):
     db.session.add(User(label=username, password=password, is_admin=True))
     db.session.commit()
 
-
+# not using
 def help(*commands):
     """Display usage of all following <commands>, or of all commands if none
     are given
