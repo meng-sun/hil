@@ -531,6 +531,7 @@ class CommandListener(object):
                               action=set_func(project_remove_node))
         proj_list=project_subparsers.add_parser('list')
         proj_list.set_defaults(func=list_projects)
+        proj_list.add_argument('--project', '--proj')
         proj_list.add_argument('--node', action=set_func(list_project_nodes), nargs='?')
         proj_list.add_argument(
             '--network', action=set_func(list_project_networks), nargs='?')
@@ -1013,15 +1014,15 @@ def list_project_nodes(args):
     do_get(url)
 
 
-def list_project_networks(project):
+def list_project_networks(args):
     """List all networks attached to a <project>"""
-    url = object_url('project', project, 'networks')
+    url = object_url('project', args.project, 'networks')
     do_get(url)
 
 
-def show_switch(switch):
+def show_switch(args):
     """Display information about <switch>"""
-    url = object_url('switch', switch)
+    url = object_url('switch', args.switch)
     do_get(url)
 
 
@@ -1031,9 +1032,9 @@ def list_networks():
     do_get(url)
 
 
-def show_network(network):
+def show_network(args):
     """Display information about <network>"""
-    url = object_url('network', network)
+    url = object_url('network', args.name)
     do_get(url)
 
 
