@@ -337,6 +337,7 @@ class CommandListener(object):
         nic_parser = subcommand_parsers.add_parser('nic')
         nic_subparsers = nic_parser.add_subparsers()
         hnic_parser = subcommand_parsers.add_parser('hnic')
+        #hnic_parser.add_argument('--hnode', '--headnode')
         hnic_subparsers = hnic_parser.add_subparsers()
         port_parser = subcommand_parsers.add_parser('port')
         port_subparsers = port_parser.add_subparsers()
@@ -383,7 +384,7 @@ class CommandListener(object):
         node_lists.add_argument('--project', '--proj',
                                 action=set_func(list_project_nodes))
         node_lists.add_argument('--network', '--net', nargs=2,
-                                metavar=('<network name>', '<project name>'),
+                                metavar=('<network name>', '<project name> or all'),
                                 action=set_func(list_network_attachments))
         node_lists.add_argument('--free', dest='is_free', action='store_true')
         node_lists.add_argument('--all', dest='is_free', action='store_false')
@@ -452,47 +453,52 @@ class CommandListener(object):
         nic_disconnect.add_argument('--switch')
          
         # hnic statements
-        hnic_parser.add_argument('--hnode', '--headnode')
         hnic_register = hnic_subparsers.add_parser(
             'register', parents=[get_name])
         hnic_register.set_defaults(func=headnode_create_hnic)
+        hnic_register.add_argument('--headnode', required=True)
         hnic_delete = hnic_subparsers.add_parser('delete', parents=[get_name])
         hnic_delete.set_defaults(func=headnode_delete_hnic)
-        # hnic_detach = hnic_subparsers.add_parser('detach')
-        # hnic_connect = hnic_subparsers.add_parser('connect')
-        # hnic_connect.add_argument('--network', '--net')
+        hnic_delete.add_argument('--headnode', required=True)
         
         # port parsers
+        port_register_parser = port_subparsers.add_parser('register', parents=[get_name])
+        port_register_parser.add_argument('--switch', required=True)
+        port_register_parser.set_defaults(func=port_register)
         port_delete_parser = port_subparsers.add_parser('delete', parents=[get_name])
         port_delete_parser.set_defaults(func=port_delete)
+        port_delete_parser.add_argument('--switch', required=True)
         port_disconnect = port_subparsers.add_parser('disconnect', parents=[get_name])
-        port_disconnect.set_defaults(action=set_func(port_remove_nic))
+        port_disconnect.add_argument('--switch', required=True)
+        port_disconnect.set_defaults(func=port_remove_nic)
         port_connect = port_subparsers.add_parser(
             'connect', parents=[get_name])
-        port_connect.set_defaults(action=set_func(port_connect_nic))
-        port_connect.add_argument('--node')
-        port_connect.add_argument('--nic')
-        # currently both types are supported
-
-
+        port_connect.set_defaults(func=port_connect_nic)
+        port_connect.add_argument('--switch', required=True)
+        port_connect.add_argument('--node', required=True)
+        port_connect.add_argument('--nic', required=True)
         
         # network statements
         net_create = network_subparsers.add_parser(
             'register', parents=[get_name])
         net_create.set_defaults(func=network_create)
-        net_create.add_argument('--owner')
-        net_create.add_argument('--access')
-        net_create.add_argument('--id')
-        net_create.add_argument(
-            '--simple', action=set_func(network_create_simple))
+        net_creates = net_create.add_mutually_exclusive_group(required=True)
+        net_creates.add_argument('--description', nargs=3,
+                                metavar=('<owner>', '<access>', '<net id>'))
+        net_creates.add_argument('--simple', metavar='<project name>',
+                                 action=set_func(network_create_simple),
+                                 dest='project')
         net_delete = network_subparsers.add_parser('delete', parents=[get_name])
         net_delete.set_defaults(func=network_delete)
         net_show = network_subparsers.add_parser('show', parents=[get_name])
         net_show.set_defaults(func=show_network)
         net_list = network_subparsers.add_parser('list')
         net_list.set_defaults(func=list_networks)
-        net_list.add_argument('--project', '--proj', action=set_func(list_project_networks))
-        net_list.add_argument('--attachments', action=set_func(list_network_attachments))
+        net_lists = net_list.add_mutually_exclusive_group() 
+        net_lists.add_argument('--project', '--proj', action=set_func(list_project_networks))
+        net_lists.add_argument('--attachments', nargs=2, metavar=('<project name> or all',
+                               '<network name>'),
+                               action=set_func(list_network_attachments))
         net_connect=network_subparsers.add_parser('connect', parents=[get_name])
         net_connect.add_argument(
             '--headnode', '--hnode', action=set_func(headnode_connect_network))
@@ -599,10 +605,14 @@ def user_create(args):
 
 def network_create(args):
     """Create a link-layer <network>. See docs/networks.md for details."""
-    url = object_url('network', args.name)
-    do_put(url, data={'owner': args.owner,
-                      'access': args.access,
-                      'net_id': args.net_id})
+    network = args.name
+    owner = args.description[0]
+    access = args.description[1]
+    net_id = args.description[2]
+    url = object_url('network', network)
+    do_put(url, data={'owner': owner,
+                      'access': access,
+                      'net_id': net_id})
 
 def network_create_simple(args):
     """Creates a simple <network> owned by project."""
@@ -612,8 +622,9 @@ def network_create_simple(args):
                       'net_id': ""})
 
 
-def network_delete(network):
+def network_delete(args):
     """Delete a <network>"""
+    network = args.name
     url = object_url('network', network)
     do_delete(url)
 
@@ -642,14 +653,26 @@ def user_remove_project(user, project):
     do_post(url, data={'project': project})
 
 
-def network_grant_project_access(project, network):
+def network_grant_project_access(args):
     """Add <project> to <network> access"""
+    if hasattr(args, 'network'):
+        network = args.name
+        project = args.project
+    else:
+        network = args.network
+        project = args.name
     url = object_url('network', network, 'access', project)
     do_put(url)
 
 
-def network_remove_project(project, network):
+def network_remove_project(args):
     """Remove <project> from <network> access"""
+    if hasattr(args, 'network'):
+        network = args.name
+        project = args.project
+    else:
+        network = args.network
+        project = args.name
     url = object_url('network', network, 'access', project)
     do_delete(url)
 
@@ -940,30 +963,34 @@ def list_switches():
     do_get(url)
 
 
-def port_register(switch, port):
+def port_register(args):
     """Register a <port> with <switch> """
+    switch = args.switch
+    port = args.name
     url = object_url('switch', switch, 'port', port)
     do_put(url)
 
 
-def port_delete(switch, port):
+def port_delete(args):
     """Delete a <port> from a <switch>"""
+    port = args.name
+    switch = args.switch
     url = object_url('switch', switch, 'port', port)
     do_delete(url)
 
 
-def port_connect_nic(switch, port, node, nic):
+def port_connect_nic(args):
     """Connect a <port> on a <switch> to a <nic> on a <node>"""
     if hasattr(args, 'port'):
+        switch = args.switch
+        port = args.port
+        node = args.node
+        nic = args.name
+    else:
         switch = args.switch
         port = args.name
         node = args.node
         nic = args.nic
-    else:
-        switch = args.switch
-        pot = args.port
-        node = args.node
-        nic = args.name
     url = object_url('switch', switch, 'port', port, 'connect_nic')
     do_post(url, data={'node': node, 'nic': nic})
 
@@ -983,8 +1010,12 @@ def list_network_attachments(args):
     """List nodes connected to a network
     <project> may be either "all" or a specific project name.
     """
-    network = args.network[0]
-    project = args.network[1]
+    if hasattr(args, 'network'):
+        network = args.network[0]
+        project = args.network[1]
+    else:
+        network = args.attachments[1]
+        project = args.attachments[0]
     url = object_url('network', network, 'attachments')
 
     if project == "all":
@@ -1016,7 +1047,8 @@ def list_project_nodes(args):
 
 def list_project_networks(args):
     """List all networks attached to a <project>"""
-    url = object_url('project', args.project, 'networks')
+    project = args.project
+    url = object_url('project', project, 'networks')
     do_get(url)
 
 
@@ -1026,7 +1058,7 @@ def show_switch(args):
     do_get(url)
 
 
-def list_networks():
+def list_networks(args):
     """List all networks"""
     url = object_url('networks')
     do_get(url)
@@ -1034,7 +1066,8 @@ def list_networks():
 
 def show_network(args):
     """Display information about <network>"""
-    url = object_url('network', args.name)
+    network = args.name
+    url = object_url('network', network)
     do_get(url)
 
 
