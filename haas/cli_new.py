@@ -531,11 +531,11 @@ class CommandListener(object):
                               action=set_func(project_remove_node))
         proj_list=project_subparsers.add_parser('list')
         proj_list.set_defaults(func=list_projects)
-        proj_list.add_argument('--node', action=set_func(list_project_nodes))
+        proj_list.add_argument('--node', action=set_func(list_project_nodes), nargs='?')
         proj_list.add_argument(
-            '--network', action=set_func(list_project_networks))
+            '--network', action=set_func(list_project_networks), nargs='?')
         proj_list.add_argument('--headnode', '--hnode',
-                               action=set_func(list_project_headnodes))
+                               action=set_func(list_project_headnodes), nargs='?')
          
         args = parser.parse_args(sys.argv[1:])
         try:
