@@ -218,7 +218,9 @@ class FailedAPICallException(Exception):
 
 
 def check_status_code(response):
-    if response.status_code < 200 or response.status_code >= 300:
+    if response.status_code == 409:
+        return response.text
+    elif response.status_code < 200 or response.status_code >= 300:
         sys.stderr.write('Unexpected status code: %d\n' % response.status_code)
         sys.stderr.write('Response text:\n')
         sys.stderr.write(response.text + "\n")
@@ -261,8 +263,22 @@ def do_get(url, params=None):
     check_status_code(http_client.request('GET', url, params=params))
 
 
+def suppress_get(url, params=None):
+    return http_client.request('GET', url, params=params)
+
+
 def do_delete(url):
-    check_status_code(http_client.request('DELETE', url))
+    response = check_status_code(http_client.request('DELETE', url))
+    if response is not None:
+        error = json.loads(response)
+        if "type" in error:
+            if error["type"] == "BlockedError":
+                return 1
+            else:
+                sys.stderr.write('Unexpected status code: 409\n')
+                sys.stderr.write('Response text:\n')
+                sys.stderr.write(response.text + "\n")
+                raise FailedAPICallException()
 
 
 # outdated
@@ -539,12 +555,6 @@ class CommandListener(object):
         proj_dis.add_argument('--node', action=set_func(project_remove_node))
         proj_list=project_subparsers.add_parser('list')
         proj_list.set_defaults(func=list_projects)
-        proj_list.add_argument('--project', '--proj')
-        proj_list.add_argument('--node', action=set_func(list_project_nodes), nargs='?')
-        proj_list.add_argument(
-            '--network', action=set_func(list_project_networks), nargs='?')
-        proj_list.add_argument('--headnode', '--hnode',
-                               action=set_func(list_project_headnodes), nargs='?')
 
         # switch parser
         switch_register_parser = switch_subparsers.add_parser('register', parents=[get_name])
@@ -737,8 +747,17 @@ def project_create(args):
 def project_delete(args):
     """Delete <project>"""
     url = object_url('project', args.name)
-    do_delete(url)
-
+    if_error = do_delete(url)
+    if if_error == 1:
+        nodes = suppress_get(object_url('project', args.name, 'nodes'))
+        networks = suppress_get(object_url('project', args.name, 'network'))
+        headnodes = suppress_get(object_url('project', args.name, 'headnodes'))
+        if nodes.status_code == 200:
+            node_list = json.loads(nodes.text)
+            for node in node_list:
+                new_args = argparse.Namespace()
+                new_args.name = node
+                node_delete(new_args)
 
 def headnode_create(args):
     """Create a <headnode> in a <project> with <base_img>"""
