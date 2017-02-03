@@ -335,7 +335,8 @@ class CommandListener(object):
         node_disconnect.set_defaults(func=empty)
 
         node_connect = node_subparsers.add_parser('connect')
-        node_connects = node_connect.add_mutually_exclusive_group(required=True)
+        node_connects = node_connect.add_mutually_exclusive_group(
+                        required=True)
         node_connects.add_argument('--network',
                                    action=set_func(node_connect_network),
                                    nargs=2,
@@ -359,8 +360,8 @@ class CommandListener(object):
         node_lists.add_argument('--free', dest='is_free', action='store_true')
         node_lists.add_argument('--all', dest='is_free', action='store_false')
         node_list.set_defaults(func=list_nodes)
-        
-        #user parsers
+
+        # user parsers
         user_reg = user_subparsers.add_parser('register', parents=[get_name])
         user_reg.set_defaults(func=user_create)
         user_reg.add_argument('--password', '--pass')
@@ -509,22 +510,26 @@ class CommandListener(object):
                                         '<network name>'),
                                action=set_func(list_network_attachments))
 
-        net_connect=network_subparsers.add_parser('connect', parents=[get_name])
+        net_connect = network_subparsers.add_parser('connect',
+                                                    parents=[get_name])
         net_connect.add_argument(
-            '--headnode', '--hnode', action=set_func(headnode_connect_network))
+            '--headnode', '--hnode',
+            action=set_func(headnode_connect_network))
         net_connect.add_argument('--hnic')
         net_connect.add_argument(
             '--node', action=set_func(node_connect_network))
         net_connect.add_argument(
             '--project', '--proj',
             action=set_func(network_grant_project_access))
-        net_dis=network_subparsers.add_parser('disconnect', parents=[get_name])
+        net_dis = network_subparsers.add_parser('disconnect',
+                                                parents=[get_name])
         net_dis.add_argument('--project', '--proj',
                              action=set_func(network_remove_project))
         net_dis.add_argument('--headnode', '--hnode',
                              action=set_func(node_remove_network))
         net_dis.add_argument('--hnic')
-        net_dis.add_argument('--node', action=set_func(headnode_remove_network))
+        net_dis.add_argument('--node',
+                             action=set_func(headnode_remove_network))
         net_dis.add_argument('--nic')
 
         # project parser
@@ -552,7 +557,7 @@ class CommandListener(object):
         proj_dis.add_argument('--project', '--proj',
                               action=set_func(project_remove_node))
         proj_dis.add_argument('--node', action=set_func(project_remove_node))
-        proj_list=project_subparsers.add_parser('list')
+        proj_list = project_subparsers.add_parser('list')
         proj_list.set_defaults(func=list_projects)
 
         # switch parser

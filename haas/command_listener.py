@@ -7,10 +7,10 @@ import argparse
 # make sure to add the path specified in your virtual
 # environment if you are using one
 # usually the shell script is located in path/to/venv/bin/
-# then restart an interactive bash shell with 
+# then restart an interactive bash shell with
 # bash
 # check that the bash completition file has been
-# generated with 
+# generated with
 # complete -p | grep "argcomplete"
 # if so, then you're set!
 
