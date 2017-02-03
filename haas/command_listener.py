@@ -1,44 +1,46 @@
 import argparse
 
-class confirm(argparse.Action):
-    def __init__(self,option_strings,dest,nargs=None,**kwargs):
-        super(confirm, self).__init__(option_strings,dest,**kwargs)
-    def __call__(self,parser,namespace,values,option_string=None):
-        #confirm = input("are you sure about this change? [y/n] to continue\n")
-        #if confirm == "y":
-        setattr(namespace,self.dest,values)
+# to set up tab completition for argparse,
+# open your ~/.bashrc file and add the line
+# eval "$(/path/to/register-python-argcomplete haas)"
+# under the user commands section
+# make sure to add the path specified in your virtual
+# environment if you are using one
+# usually the shell script is located in path/to/venv/bin/
+# then restart an interactive bash shell with 
+# bash
+# check that the bash completition file has been
+# generated with 
+# complete -p | grep "argcomplete"
+# if so, then you're set!
+
 
 class CommandFramework(object):
-    # TODO documentation
+    """creates the skeleton of the argparse parser to
+    allow faster tab completition"""
 
     def __init__(self):
+
         parser = argparse.ArgumentParser(usage='haas')
         subcommand_parsers = parser.add_subparsers()
 
-        # startup commands
+        # Startup Commands
         serve_parser = subcommand_parsers.add_parser('serve', help="todo")
         serve_parser.add_argument('port', type=int, help="2")
-        
-        serve_networks_parser = subcommand_parsers.add_parser('serveNetworks', help="1")
-        
-        # parent parsers
+
+        serve_networks_parser = subcommand_parsers.add_parser(
+                                'serveNetworks', help="1")
+
+        create_first_admin = subcommand_parsers.add_parser('admin')
+        create_first_admin.add_argument('name')
+        create_first_admin.add_argument('password')
+
+        # PARENT PARSERS: shared options
         get_name = argparse.ArgumentParser(add_help=False)
         get_name.add_argument('name', metavar='<object name>')
+
         get_type = argparse.ArgumentParser(add_help=False)
         get_type.add_argument('type', metavar='<object type>')
-
-        get_subtype_details = argparse.ArgumentParser(add_help=False)
-        get_subtype_details.add_argument('host', metavar='<host>')
-        get_subtype_details.add_argument('user', metavar= '<username>')
-        get_subtype_details.add_argument('password', metavar='<password>')
-
-        # get_subtype_details = argparse.ArgumentParser(add_help=False)
-        # get_subtype_details.add_argument('-d', nargs='+', required=True)
-       
-        get_names = argparse.ArgumentParser(add_help=False)
-        get_types = argparse.ArgumentParser(add_help=False)
-        get_names.add_argument('name', metavar='<object name>', action='append')
-        get_types.add_argument('type', metavar='<object type>', action='append')
 
         # parser commands by object
         node_parser = subcommand_parsers.add_parser('node')
@@ -60,170 +62,246 @@ class CommandFramework(object):
         port_parser = subcommand_parsers.add_parser('port')
         port_subparsers = port_parser.add_subparsers()
 
+        node_reg_parser = node_subparsers.add_parser(
+                               'register', parents=[get_name])
+        node_register_subtype = node_reg_parser.add_mutually_exclusive_group(
+                                required=True)
+        node_register_subtype.add_argument('--mock', nargs=3,
+                                           metavar=('host',
+                                                    'user',
+                                                    'password'))
+        node_register_subtype.add_argument('--impi', nargs=3,
+                                           metavar=('host',
+                                                    'user',
+                                                    'password'))
 
-        
-        node_register = node_subparsers.add_parser('register')
-        node_register_subtype = node_register.add_mutually_exclusive_group(required=True)
-        node_register_subtype.add_argument('--mock', nargs=3, metavar=('host','user','password') )
-        node_register_subtype.add_argument('--impi', nargs=3, metavar=('host','user','password') )
-        # node_register_subtype = node_register.add_subparsers()
-        # ipmi_node_register = node_register_subtype.add_parser('ipmi', parents = [get_name, get_subtype_details])
-        # mock_node_register = node_register_subtype.add_parser('mock', parents = [get_name, get_subtype_details])
-        
-        node_delete = node_subparsers.add_parser('delete')
+        node_delete_parser = node_subparsers.add_parser(
+                             'delete', parents=[get_name])
 
-        node_disconnect = node_subparsers.add_parser('disconnect')
-        node_disconnect_partners = node_disconnect.add_subparsers()
-        node_disconnect_network = node_disconnect_partners.add_parser('network')
-        node_disconnect_project = node_disconnect_partners.add_parser('project')
-        node_disconnect_nic = node_disconnect_partners.add_parser('nic')
+        node_disconnect = node_subparsers.add_parser(
+                          'disconnect', parents=[get_name])
+        node_disconnects = node_disconnect.add_mutually_exclusive_group(
+                           required=True)
+        node_disconnects.add_argument('--network',
+                                      nargs=2,
+                                      metavar=('<network name>', '<nic name>')
+                                      )
+        node_disconnects.add_argument('--project', metavar='<project name>')
 
-        # node_reset = node_subparsers.add_parser('reset')
-        # reset children falls under reset?
+        node_connect = node_subparsers.add_parser(
+                       'connect', parents=[get_name])
+        node_connects = node_connect.add_mutually_exclusive_group(
+                        required=True)
+        node_connects.add_argument('--network',
+                                   nargs=3,
+                                   metavar=('<network name>',
+                                            '<nic name>',
+                                            '<channel>'))
+        node_connects.add_argument('--project', metavar='<project name>')
 
-        node_connect = node_subparsers.add_parser('connect')
-        node_connect_partners = node_connect.add_subparsers()
-        node_connect_network = node_connect_partners.add_parser('network')
-        node_connect_project = node_connect_partners.add_parser('project')
-        node_connect_nic = node_connect_partners.add_parser('nic')
+        node_show = node_subparsers.add_parser('show', parents=[get_name])
 
-        node_show = node_subparsers.add_parser('show')
+        node_list = node_subparsers.add_parser('list')
+        node_lists = node_list.add_mutually_exclusive_group(required=True)
+        node_lists.add_argument('--project', '--proj')
+        node_lists.add_argument('--network', '--net', nargs=2,
+                                metavar=('<network name>',
+                                         '<project name> or all'))
+        node_lists.add_argument('--free', dest='is_free', action='store_true')
+        node_lists.add_argument('--all', dest='is_free', action='store_false')
 
+        node_console = node_subparsers.add_parser('console')
+        node_console_actions = node_console.add_subparsers()
+        node_console_show = node_console_actions.add_parser(
+                            'show', parents=[get_name])
+        node_console_start = node_console_actions.add_parser(
+                             'start', parents=[get_name])
+        node_console_stop = node_console_actions.add_parser(
+                            'stop', parents=[get_name])
 
-        network_register = network_subparsers.add_parser('register')
-        
-        network_delete = network_subparsers.add_parser('delete')
-        network_delete.add_argument('name', action = confirm)
-        # confirm doesn't work properly yet and probably should also get put on reset        
-        network_disconnect = network_subparsers.add_parser('disconnect')
-        network_disconnect_partners = network_disconnect.add_subparsers()
-        network_disconnect_node = network_disconnect_partners.add_parser('node')
-        network_disconnect_project = network_disconnect_partners.add_parser('project')
-        # access check is still done through api
-        
-        # network_reset = network_subparsers.add_parser('reset')
-        
-        network_connect = network_subparsers.add_parser('connect')
-        network_connect_partners = network_connect.add_subparsers()
-        network_connect_project = network_connect_partners.add_parser('project')
-        network_connect_node = network_connect_partners.add_parser('node')
+        # headnode statements
+        hn_reg = headnode_subparsers.add_parser('register',
+                                                parents=[get_name])
+        hn_reg.add_argument('--project', '--proj', required=True)
+        hn_reg.add_argument('--image', '--img',
+                            choices=['img1', 'img2', 'img3', 'img4'],
+                            required=True)
 
-        network_show = network_subparsers.add_parser('show')
- 
+        # not able to look at extensions right now
+        hn_delete = headnode_subparsers.add_parser('delete',
+                                                   parents=[get_name])
 
+        hn_connect = headnode_subparsers.add_parser('connect',
+                                                    parents=[get_name])
+        hn_connect.add_argument('--network', required=True)
+        hn_connect.add_argument('--hnic', required=True)
 
-        nic_register = nic_subparsers.add_parser('register')
+        hn_detach = headnode_subparsers.add_parser('disconnect',
+                                                   parents=[get_name])
+        hn_detach.add_argument('---hnic', required=True)
 
-        nic_delete = nic_subparsers.add_parser('delete')
+        hn_start = headnode_subparsers.add_parser('start', parents=[get_name])
+
+        hn_stop = headnode_subparsers.add_parser('stop', parents=[get_name])
+
+        show_hn = headnode_subparsers.add_parser('show', parents=[get_name])
+
+        list_hn = headnode_subparsers.add_parser('list')
+        list_hn.add_argument('--project', '-proj', required=True)
+
+        hn_images = headnode_subparsers.add_parser('images')
+
+        # nic statements
+        nic_register = nic_subparsers.add_parser(
+            'register', parents=[get_name])
+        nic_register.add_argument('--node', required=True)
+        nic_register.add_argument('--macaddr', required=True)
+
+        nic_delete = nic_subparsers.add_parser('delete', parents=[get_name])
+        nic_delete.add_argument('--node', required=True)
+
+        nic_connect = nic_subparsers.add_parser('connect', parents=[get_name])
+        nic_connect.add_argument('--node', required=True)
+        nic_connect.add_argument('--switch', required=True)
+        nic_connect.add_argument('--port', required=True)
 
         nic_disconnect = nic_subparsers.add_parser('disconnect')
-        nic_disconnect_partners = nic_disconnect.add_subparsers()
-        nic_disconnect_node = nic_disconnect_partners.add_parser('node')
-        nic_disconnect_port = nic_disconnect_partners.add_parser('port')
+        nic_disconnect.add_argument('--port')
+        nic_disconnect.add_argument('--switch')
 
-        nic_connect = nic_subparsers.add_parser('connect')
-        nic_connect_partners = nic_connect.add_subparsers()
-        nic_connect_port = nic_connect_partners.add_parser('port')
-        nic_connect_node = nic_connect_partners.add_parser('node')
+        # hnic statements
+        hnic_register = hnic_subparsers.add_parser(
+                        'register', parents=[get_name])
+        hnic_register.add_argument('--headnode', required=True)
 
-        nic_show = nic_subparsers.add_parser('show')
+        hnic_delete = hnic_subparsers.add_parser('delete', parents=[get_name])
+        hnic_delete.add_argument('--headnode', required=True)
 
+        # port parsers
+        port_register_parser = port_subparsers.add_parser(
+                               'register', parents=[get_name])
+        port_register_parser.add_argument('--switch', required=True)
 
+        port_delete_parser = port_subparsers.add_parser('delete',
+                                                        parents=[get_name])
+        port_delete_parser.add_argument('--switch', required=True)
 
-        project_register = project_subparsers.add_parser('register')
+        port_disconnect = port_subparsers.add_parser('disconnect',
+                                                     parents=[get_name])
+        port_disconnect.add_argument('--switch', required=True)
 
-        project_delete = project_subparsers.add_parser('delete')
+        port_connect = port_subparsers.add_parser(
+                       'connect', parents=[get_name])
+        port_connect.add_argument('--switch', required=True)
+        port_connect.add_argument('--node', required=True)
+        port_connect.add_argument('--nic', required=True)
 
-        project_disconnect = project_subparsers.add_parser('disconnect')
-        project_disconnect_partners = project_disconnect.add_subparsers()
-        project_disconnect_node = project_disconnect_partners.add_parser('node')
-        project_disconnect_user = project_disconnect_partners.add_parser('user')
-        project_disconnect_network = project_disconnect_partners.add_parser('network')
+        # network statements
+        net_create = network_subparsers.add_parser(
+                     'register', parents=[get_name])
+        net_creates = net_create.add_mutually_exclusive_group(required=True)
+        net_creates.add_argument('--description', nargs=3,
+                                 metavar=('<owner>', '<access>', '<net id>'))
+        net_creates.add_argument('--simple', metavar='<project name>',
+                                 dest='project')
 
+        net_delete = network_subparsers.add_parser('delete',
+                                                   parents=[get_name])
 
-        project_connect = project_subparsers.add_parser('connect')
-        project_connect_partners = project_connect.add_subparsers()
-        project_connect_network = project_connect_partners.add_parser('network')
-        project_connect_node = project_connect_partners.add_parser('node')
-        project_connect_user = project_connect_partners.add_parser('user')
+        net_show = network_subparsers.add_parser('show', parents=[get_name])
 
+        net_list = network_subparsers.add_parser('list')
+        net_lists = net_list.add_mutually_exclusive_group()
+        net_lists.add_argument('--project', '--proj')
+        net_lists.add_argument('--attachments', nargs=2,
+                               metavar=('<project name> or all',
+                                        '<network name>'))
 
-        project_show = project_subparsers.add_parser('show')
+        net_connect = network_subparsers.add_parser('connect',
+                                                    parents=[get_name])
+        net_connects = net_connect.add_mutually_exclusive_group(required=True)
+        net_connects.add_argument('--headnode', '--hnode', nargs=2,
+                                  metavar=('<headnode name>', '<hnic name>'))
+        net_connects.add_argument('--node', nargs=3,
+                                  metavar=('<node name>',
+                                           '<nic name>',
+                                           '<channel>'))
+        net_connects.add_argument('--project', '--proj')
 
+        net_dis = network_subparsers.add_parser('disconnect',
+                                                parents=[get_name])
+        net_disconnects = net_dis.add_mutually_exclusive_group(required=True)
+        net_disconnects.add_argument('--project', '--proj')
+        net_disconnects.add_argument('--headnode', '--hnode', nargs=2,
+                                     metavar=('<headnode name>',
+                                              '<hnic name>'))
+        net_disconnects.add_argument('--node', nargs=2,
+                                     metavar=('<node name>', '<nic name>'))
 
+        # project parser
+        proj_create = project_subparsers.add_parser('register',
+                                                    parents=[get_name])
 
+        proj_delete = project_subparsers.add_parser('delete',
+                                                    parents=[get_name])
 
-        user_register = user_subparsers.add_parser('register')
+        proj_connect = project_subparsers.add_parser('connect',
+                                                     parents=[get_name])
+        proj_connect.add_argument('--node')
+        proj_connect.add_argument('--network', '--net')
+        proj_connect.add_argument('--user')
 
-        user_delete = user_subparsers.add_parser('delete')
+        proj_dis = project_subparsers.add_parser('disconnect',
+                                                 parents=[get_name])
+        proj_dis.add_argument('--user')
 
-        user_disconnect = user_subparsers.add_parser('disconnect')
-        user_disconnect_partners = user_disconnect.add_subparsers()
-        user_disconnect_project = user_disconnect_partners.add_parser('project')
+        proj_dis.add_argument('--network', '--net')
+        proj_dis.add_argument('--node')
 
+        proj_list = project_subparsers.add_parser('list')
 
-        user_connect = user_subparsers.add_parser('connect')
-        user_connect_partners = user_connect.add_subparsers()
-        user_connect_project = user_connect_partners.add_parser('project')
+        # switch parser
+        switch_register_parser = switch_subparsers.add_parser(
+                                 'register', parents=[get_name])
+        switch_registers = switch_register_parser.add_mutually_exclusive_group(
+                           required=True)
+        switch_registers.add_argument('--nexus', nargs=4,
+                                      metavar=('host', 'user',
+                                               'password', 'vlan'))
+        switch_registers.add_argument('--mock', nargs=3,
+                                      metavar=('host', 'user', 'password'))
+        switch_registers.add_argument('--powerconnect55xx', nargs=3,
+                                      metavar=('host', 'user', 'password'))
+        switch_registers.add_argument('--brocade', nargs=4,
+                                      metavar=('host', 'user',
+                                               'pwd', 'interface'))
 
+        switch_delete_parser = switch_subparsers.add_parser('delete',
+                                                            parents=[get_name])
 
-        user_show = user_subparsers.add_parser('show')
+        switch_show = switch_subparsers.add_parser('show',
+                                                   parents=[get_name])
 
+        switch_list = switch_subparsers.add_parser('list')
 
+        # user parser
+        user_register_parser = user_subparsers.add_parser('register',
+                                                          parents=[get_name])
+        user_register_parser.add_argument('password')
+        user_register_parser.add_argument('--admin', action='store_true')
 
-        port_register = port_subparsers.add_parser('register')
+        user_delete_parser = user_subparsers.add_parser('delete',
+                                                        parents=[get_name])
 
-        port_delete = port_subparsers.add_parser('delete')
+        user_connect = user_subparsers.add_parser('connect',
+                                                  parents=[get_name])
+        user_connect.add_argument('--project', required=True)
 
-        port_disconnect = port_subparsers.add_parser('disconnect')
-        port_disconnect_partners = port_disconnect.add_subparsers()
-        port_disconnect_nic = port_disconnect_partners.add_parser('nic')
-        port_disconnect_switch = port_disconnect_partners.add_parser('switch')
-
-
-        port_connect = port_subparsers.add_parser('connect')
-        port_connect_partners = port_connect.add_subparsers()
-        port_connect_nic = port_connect_partners.add_parser('nic')
-        port_connect_switch = port_connect_partners.add_parser('switch')
-
-
-        port_show = port_subparsers.add_parser('show')
-
-
-
-
-
-        switch_register = switch_subparsers.add_parser('register')
-        switch_register_subtype = switch_register.add_subparsers()
-
-        register_nexus_switch = switch_register_subtype.add_parser('nexus',parents=[get_name, get_subtype_details])
-        register_nexus_switch.add_argument('dummy vlan')
-        register_mock_switch = switch_register_subtype.add_parser('mock',parents=[get_name, get_subtype_details])
-        register_powerconnect55xx_switch = switch_register_subtype.add_parser('powerconnect55xx',
-                                           parents=[get_name, get_subtype_details])
-        register_brocade_switch = switch_register_subtype.add_parser('brocade',parents=[get_name, get_subtype_details])
-        register_brocade_switch.add_argument('interface type')
-
-
-
-        switch_delete = switch_subparsers.add_parser('delete')
-        
-        switch_disconnect = switch_subparsers.add_parser('disconnect')
-        switch_disconnect_partners = switch_disconnect.add_subparsers()
-        switch_disconnect_port = switch_disconnect_partners.add_parser('port')
-        
-        # switch_reset = switch_subparsers.add_parser('reset')
-        
-        switch_connect = switch_subparsers.add_parser('connect')
-        switch_connect_partners = switch_connect.add_subparsers()
-        switch_connect_port = switch_connect_partners.add_parser('port')
-
-        switch_show = switch_subparsers.add_parser('show')
-
+        user_disconnect = user_subparsers.add_parser('disconnect',
+                                                     parents=[get_name])
+        user_disconnect.add_argument('--project', required=True)
 
         self.parser = parser
-
-
 
     def getCommandFramework(self):
         return self.parser
