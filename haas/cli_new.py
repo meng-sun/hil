@@ -25,8 +25,6 @@ import urllib
 import schema
 import abc
 import argparse
-# import subprocess
-# ^for confirmation statement
 
 from functools import wraps
 
@@ -34,25 +32,6 @@ command_dict = {}
 usage_dict = {}
 MIN_PORT_NUMBER = 1
 MAX_PORT_NUMBER = 2**16 - 1
-
-# this is the confirmation statement for recursive delete
-# unfortunately it isnt working properly now
-
-
-class confirm(argparse.Action):
-
-    def __init__(self, option_strings, dest, nargs=None, **kwargs):
-        super(confirm, self).__init__(option_strings,
-                                      dest, nargs, **kwargs)
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        print 'are you sure about this change? [y/n] to continue\n'
-        # confirm = subprocess.Popen(['read', '-n', '1',
-        #          'confirm', '\n', 'echo', '$confirm'],
-        #           shell=True, stdout=subprocess.PIPE)
-        # if confirm == "y":
-        # TODO: why is this throwing an error
-        setattr(namespace, self.dest, values)
 
 
 def set_func(function):
@@ -226,10 +205,7 @@ class FailedAPICallException(Exception):
 
 
 def check_status_code(response):
-    if response.status_code == 409:
-        # this allows recursive delete to check status of API call
-        return response.text
-    elif response.status_code < 200 or response.status_code >= 300:
+    if response.status_code < 200 or response.status_code >= 300:
         sys.stderr.write('Unexpected status code: %d\n' % response.status_code)
         sys.stderr.write('Response text:\n')
         sys.stderr.write(response.text + "\n")
@@ -272,26 +248,8 @@ def do_get(url, params=None):
     check_status_code(http_client.request('GET', url, params=params))
 
 
-# for recursive delete, unfinished
-"""
-def suppress_get(url, params=None):
-    return http_client.request('GET', url, params=params)
-"""
-
-
 def do_delete(url):
-    # edits made to response to recursive delete, unfinished
-    response = check_status_code(http_client.request('DELETE', url))
-    if response is not None:
-        error = json.loads(response)
-        if "type" in error:
-            if error["type"] == "BlockedError":
-                return 1
-            else:
-                sys.stderr.write('Unexpected status code: 409\n')
-                sys.stderr.write('Response text:\n')
-                sys.stderr.write(response.text + "\n")
-                raise FailedAPICallException()
+    check_status_code(http_client.request('DELETE', url))
 
 
 class CommandListener(object):
@@ -361,8 +319,6 @@ class CommandListener(object):
 
         node_delete_parser = node_subparsers.add_parser(
                              'delete', parents=[get_name])
-        # node_delete_parser.add_argument('--name', action=confirm)
-        # fix confirm action, also add in recursive function
         node_delete_parser.set_defaults(func=node_delete)
 
         node_disconnect = node_subparsers.add_parser(
@@ -427,7 +383,6 @@ class CommandListener(object):
                             required=True)
         hn_reg.set_defaults(func=headnode_create)
 
-        # not able to look at extensions right now
         hn_delete = headnode_subparsers.add_parser('delete',
                                                    parents=[get_name])
         hn_delete.set_defaults(func=headnode_delete)
@@ -629,7 +584,6 @@ class CommandListener(object):
         user_register_parser = user_subparsers.add_parser('register',
                                                           parents=[get_name])
         user_register_parser.add_argument('password')
-        # ^is a password required?
         user_register_parser.add_argument('--admin', action='store_true')
         user_register_parser.set_defaults(func=user_create)
 
@@ -679,7 +633,6 @@ def serve(args):
     rest.serve(args.port, debug=debug)
 
 
-# test if this'll screw up service
 def serve_networks(args):
     """Start the HaaS networking server"""
     from haas import model, deferred
@@ -808,21 +761,10 @@ def project_create(args):
     do_put(url)
 
 
-# example implementation of recursive delete
 def project_delete(args):
     """Delete <project>"""
     url = object_url('project', args.name)
-    if_error = do_delete(url)
-    if if_error == 1:
-        nodes = suppress_get(object_url('project', args.name, 'nodes'))
-        networks = suppress_get(object_url('project', args.name, 'network'))
-        headnodes = suppress_get(object_url('project', args.name, 'headnodes'))
-        if nodes.status_code == 200:
-            node_list = json.loads(nodes.text)
-            for node in node_list:
-                new_args = argparse.Namespace()
-                new_args.name = node
-                node_delete(new_args)
+    do_delete(url)
 
 
 def headnode_create(args):
