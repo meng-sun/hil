@@ -70,7 +70,7 @@ class CommandFramework(object):
                                            metavar=('host',
                                                     'user',
                                                     'password'))
-        node_register_subtype.add_argument('--impi', nargs=3,
+        node_register_subtype.add_argument('--ipmi', nargs=3,
                                            metavar=('host',
                                                     'user',
                                                     'password'))
