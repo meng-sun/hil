@@ -26,6 +26,9 @@ import schema
 import abc
 import argparse
 
+# to be removed after transition:
+import cli
+
 from functools import wraps
 
 command_dict = {}
@@ -252,370 +255,130 @@ def do_delete(url):
     check_status_code(http_client.request('DELETE', url))
 
 
+class TransitionMessageException(Exception):
+    """used to help transition between cli and cli_new
+    """
+    pass
+
+
+class ArgumentParserWithLongHelp(argparse.ArgumentParser):
+    """ArgumentParser that prints a reformatted version
+    of the usage statement when the user inputs too few
+    arguments"""
+    def __init__(self, prog=None, usage=None, **kwargs):
+        super(ArgumentParserWithLongHelp, self).__init__(prog, usage, **kwargs)
+
+    def error(self, message):
+        args = {'prog': self.prog, 'message': message}
+        if message == "too few arguments":
+            command_string = self.format_usage()
+            i = 0
+            while i < len(command_string) and command_string[i] != ']':
+                i += 1
+            i += 1
+            super(ArgumentParserWithLongHelp, self)._print_message(
+                  "You entered: "+command_string[7:i]+"\n")
+            super(ArgumentParserWithLongHelp, self)._print_message(
+                  "Please check if missing: "+command_string[i:])
+            super(ArgumentParserWithLongHelp, self).exit(
+                  2, ('%(prog)s: error: %(message)s\n') % args)
+        elif message[0:14] == "invalid choice":
+            raise TransitionMessageException()
+
+        else:
+            self.print_usage(sys.stderr)
+            super(ArgumentParserWithLongHelp, self).exit(
+                  2, ('%(prog)s: error: %(message)s\n') % args)
+
+
 class CommandListener(object):
     """Creates argparse parser structure for calling API functions.
+    Class variables are abstract parent parsers, and object variables
+    hold all the subparsers passed between functions for sub-
+    command creation. Calling self.run() will parse one user-input
+    string.
     """
+    get_name = argparse.ArgumentParser(add_help=False)
+    get_name.add_argument('name', metavar='<object name>')
+
+    get_type = argparse.ArgumentParser(add_help=False)
+    get_type.add_argument('type', metavar='<object type>')
 
     def __init__(self):
-        parser = argparse.ArgumentParser(usage='haas')
-        subcommand_parsers = parser.add_subparsers()
+        self.parser = ArgumentParserWithLongHelp('haas')
+        self.subcommand_parsers = self.parser.add_subparsers()
+        self.user_subparsers = None
 
-        # Startup Commands
-        serve_parser = subcommand_parsers.add_parser(
-                       'serve', help="starts a http client")
-        serve_parser.add_argument('port', type=int, help="port number")
-        serve_parser.set_defaults(func=serve)
+    def run(self):
+        """Creates all parsers and parses arguments.
+        """
+        self.serve_func()
+        self.serve_networks_func()
+        self.create_first_admin_func()
+        self.user_func()
 
-        serve_networks_parser = subcommand_parsers.add_parser(
-                                'serveNetworks')
-        serve_networks_parser.set_defaults(func=serve_networks)
+        try:
+            args = self.parser.parse_args(sys.argv[1:])
+        except TransitionMessageException:
+            # sends the command to cli
+            cli.main(sys.argv[1:])
+            sys.exit(0)
 
-        create_first_admin = subcommand_parsers.add_parser('admin')
-        create_first_admin.add_argument('name')
-        create_first_admin.add_argument('password')
-        create_first_admin.set_defaults(func=create_admin_user)
-
-        # PARENT PARSERS: shared options
-        get_name = argparse.ArgumentParser(add_help=False)
-        get_name.add_argument('name', metavar='<object name>')
-
-        get_type = argparse.ArgumentParser(add_help=False)
-        get_type.add_argument('type', metavar='<object type>')
-
-        # parser commands by object
-        node_parser = subcommand_parsers.add_parser('node')
-        node_subparsers = node_parser.add_subparsers()
-        network_parser = subcommand_parsers.add_parser('network')
-        network_subparsers = network_parser.add_subparsers()
-        user_parser = subcommand_parsers.add_parser('user')
-        user_subparsers = user_parser.add_subparsers()
-        project_parser = subcommand_parsers.add_parser('project')
-        project_subparsers = project_parser.add_subparsers()
-        switch_parser = subcommand_parsers.add_parser('switch')
-        switch_subparsers = switch_parser.add_subparsers()
-        headnode_parser = subcommand_parsers.add_parser('headnode')
-        headnode_subparsers = headnode_parser.add_subparsers()
-        nic_parser = subcommand_parsers.add_parser('nic')
-        nic_subparsers = nic_parser.add_subparsers()
-        hnic_parser = subcommand_parsers.add_parser('hnic')
-        hnic_subparsers = hnic_parser.add_subparsers()
-        port_parser = subcommand_parsers.add_parser('port')
-        port_subparsers = port_parser.add_subparsers()
-
-        # node parsers
-        node_reg_parser = node_subparsers.add_parser(
-                               'register', parents=[get_name])
-        node_register_subtype = node_reg_parser.add_mutually_exclusive_group(
-                                required=True)
-        node_register_subtype.add_argument('--mock', nargs=3,
-                                           metavar=('host',
-                                                    'user',
-                                                    'password'))
-        node_register_subtype.add_argument('--ipmi', nargs=3,
-                                           metavar=('host',
-                                                    'user',
-                                                    'password'))
-        node_reg_parser.set_defaults(func=node_register)
-
-        node_delete_parser = node_subparsers.add_parser(
-                             'delete', parents=[get_name])
-        node_delete_parser.set_defaults(func=node_delete)
-
-        node_disconnect = node_subparsers.add_parser(
-                          'disconnect', parents=[get_name])
-        node_disconnects = node_disconnect.add_mutually_exclusive_group(
-                           required=True)
-        node_disconnects.add_argument('--network',
-                                      action=set_func(node_remove_network),
-                                      nargs=2,
-                                      metavar=('<network name>', '<nic name>')
-                                      )
-        node_disconnects.add_argument('--project', metavar='<project name>',
-                                      action=set_func(project_remove_node))
-        node_disconnect.set_defaults(func=empty)
-
-        node_connect = node_subparsers.add_parser('connect')
-        node_connects = node_connect.add_mutually_exclusive_group(
-                        required=True)
-        node_connects.add_argument('--network',
-                                   action=set_func(node_connect_network),
-                                   nargs=2,
-                                   metavar=('<network name>', '<nic name>')
-                                   )
-
-        node_connects.add_argument('--project', metavar='<project name>',
-                                   action=set_func(project_connect_node))
-
-        node_show = node_subparsers.add_parser('show', parents=[get_name])
-        node_show.set_defaults(func=show_node)
-
-        node_list = node_subparsers.add_parser('list')
-        node_lists = node_list.add_mutually_exclusive_group(required=True)
-        node_lists.add_argument('--project', '--proj',
-                                action=set_func(list_project_nodes))
-        node_lists.add_argument('--network', '--net', nargs=2,
-                                metavar=('<network name>',
-                                         '<project name> or all'),
-                                action=set_func(list_network_attachments))
-        node_lists.add_argument('--free', dest='is_free', action='store_true')
-        node_lists.add_argument('--all', dest='is_free', action='store_false')
-        node_list.set_defaults(func=list_nodes)
-
-        # user parsers
-        user_reg = user_subparsers.add_parser('register', parents=[get_name])
-        user_reg.set_defaults(func=user_create)
-        user_reg.add_argument('--password', '--pass')
-        user_reg.add_argument('--admin', action='store_true')
-        user_del = user_subparsers.add_parser('delete', parents=[get_name])
-        user_del.set_defaults(func=user_delete)
-        user_con = user_subparsers.add_parser('connect', parents=[get_name])
-        user_con.set_defaults(func=user_add_project)
-        user_con.add_argument('--project', '--proj')
-        user_dis = user_subparsers.add_parser('disconnect', parents=[get_name])
-        user_dis.set_defaults(func=user_remove_project)
-        user_dis.add_argument('--project', '--proj')
-
-        node_console = node_subparsers.add_parser('console')
-        node_console_actions = node_console.add_subparsers()
-        node_console_show = node_console_actions.add_parser(
-                            'show', parents=[get_name])
-        node_console_show.set_defaults(func=show_console)
-        node_console_start = node_console_actions.add_parser(
-                             'start', parents=[get_name])
-        node_console_start.set_defaults(func=start_console)
-        node_console_stop = node_console_actions.add_parser(
-                            'stop', parents=[get_name])
-        node_console_stop.set_defaults(func=stop_console)
-
-        # headnode statements
-        hn_reg = headnode_subparsers.add_parser('register',
-                                                parents=[get_name])
-        hn_reg.add_argument('--project', '--proj', required=True)
-        hn_reg.add_argument('--image', '--img',
-                            choices=['img1', 'img2', 'img3', 'img4'],
-                            required=True)
-        hn_reg.set_defaults(func=headnode_create)
-
-        hn_delete = headnode_subparsers.add_parser('delete',
-                                                   parents=[get_name])
-        hn_delete.set_defaults(func=headnode_delete)
-
-        hn_connect = headnode_subparsers.add_parser('connect',
-                                                    parents=[get_name])
-        hn_connect.add_argument('--network', required=True)
-        hn_connect.add_argument('--hnic', required=True)
-        hn_connect.set_defaults(func=headnode_connect_network)
-
-        hn_detach = headnode_subparsers.add_parser('disconnect',
-                                                   parents=[get_name])
-        hn_detach.add_argument('---hnic', required=True)
-        hn_detach.set_defaults(func=headnode_remove_network)
-
-        hn_start = headnode_subparsers.add_parser('start', parents=[get_name])
-        hn_start.set_defaults(func=headnode_start)
-
-        hn_stop = headnode_subparsers.add_parser('stop', parents=[get_name])
-        hn_stop.set_defaults(func=headnode_stop)
-
-        show_hn = headnode_subparsers.add_parser('show', parents=[get_name])
-        show_hn.set_defaults(func=show_headnode)
-
-        list_hn = headnode_subparsers.add_parser('list')
-        list_hn.add_argument('--project', '-proj', required=True)
-        list_hn.set_defaults(func=list_project_headnodes)
-
-        hn_images = headnode_subparsers.add_parser('images')
-        hn_images.set_defaults(func=list_headnode_images)
-
-        # nic statements
-        nic_register = nic_subparsers.add_parser(
-            'register', parents=[get_name])
-        nic_register.set_defaults(func=node_register_nic)
-        nic_register.add_argument('--node', required=True)
-        nic_register.add_argument('--macaddr', required=True)
-
-        nic_delete = nic_subparsers.add_parser('delete', parents=[get_name])
-        nic_delete.set_defaults(func=node_delete_nic)
-        nic_delete.add_argument('--node', required=True)
-
-        nic_connect = nic_subparsers.add_parser('connect', parents=[get_name])
-        nic_connect.set_defaults(func=port_connect_nic)
-        nic_connect.add_argument('--node', required=True)
-        nic_connect.add_argument('--switch', required=True)
-        nic_connect.add_argument('--port', required=True)
-
-        nic_disconnect = nic_subparsers.add_parser('disconnect')
-        nic_disconnect.set_defaults(func=port_remove_nic)
-        nic_disconnect.add_argument('--port')
-        nic_disconnect.add_argument('--switch')
-
-        # hnic statements
-        hnic_register = hnic_subparsers.add_parser(
-                        'register', parents=[get_name])
-        hnic_register.set_defaults(func=headnode_create_hnic)
-        hnic_register.add_argument('--headnode', required=True)
-
-        hnic_delete = hnic_subparsers.add_parser('delete', parents=[get_name])
-        hnic_delete.set_defaults(func=headnode_delete_hnic)
-        hnic_delete.add_argument('--headnode', required=True)
-
-        # port parsers
-        port_register_parser = port_subparsers.add_parser(
-                               'register', parents=[get_name])
-        port_register_parser.add_argument('--switch', required=True)
-        port_register_parser.set_defaults(func=port_register)
-
-        port_delete_parser = port_subparsers.add_parser('delete',
-                                                        parents=[get_name])
-        port_delete_parser.set_defaults(func=port_delete)
-        port_delete_parser.add_argument('--switch', required=True)
-
-        port_disconnect = port_subparsers.add_parser('disconnect',
-                                                     parents=[get_name])
-        port_disconnect.add_argument('--switch', required=True)
-        port_disconnect.set_defaults(func=port_remove_nic)
-
-        port_connect = port_subparsers.add_parser(
-                       'connect', parents=[get_name])
-        port_connect.set_defaults(func=port_connect_nic)
-        port_connect.add_argument('--switch', required=True)
-        port_connect.add_argument('--node', required=True)
-        port_connect.add_argument('--nic', required=True)
-
-        # network statements
-        net_create = network_subparsers.add_parser(
-                     'register', parents=[get_name])
-        net_create.set_defaults(func=network_create)
-        net_creates = net_create.add_mutually_exclusive_group(required=True)
-        net_creates.add_argument('--description', nargs=3,
-                                 metavar=('<owner>', '<access>', '<net id>'))
-        net_creates.add_argument('--simple', metavar='<project name>',
-                                 action=set_func(network_create_simple),
-                                 dest='project')
-
-        net_delete = network_subparsers.add_parser('delete',
-                                                   parents=[get_name])
-        net_delete.set_defaults(func=network_delete)
-
-        net_show = network_subparsers.add_parser('show', parents=[get_name])
-        net_show.set_defaults(func=show_network)
-
-        net_list = network_subparsers.add_parser('list')
-        net_list.set_defaults(func=list_networks)
-        net_lists = net_list.add_mutually_exclusive_group()
-        net_lists.add_argument('--project', '--proj',
-                               action=set_func(list_project_networks))
-        net_lists.add_argument('--attachments', nargs=2,
-                               metavar=('<project name> or all',
-                                        '<network name>'),
-                               action=set_func(list_network_attachments))
-
-        net_connect = network_subparsers.add_parser('connect',
-                                                    parents=[get_name])
-        net_connect.add_argument(
-            '--headnode', '--hnode',
-            action=set_func(headnode_connect_network))
-        net_connect.add_argument('--hnic')
-        net_connect.add_argument(
-            '--node', action=set_func(node_connect_network))
-        net_connect.add_argument(
-            '--project', '--proj',
-            action=set_func(network_grant_project_access))
-        net_dis = network_subparsers.add_parser('disconnect',
-                                                parents=[get_name])
-        net_dis.add_argument('--project', '--proj',
-                             action=set_func(network_remove_project))
-        net_dis.add_argument('--headnode', '--hnode',
-                             action=set_func(node_remove_network))
-        net_dis.add_argument('--hnic')
-        net_dis.add_argument('--node',
-                             action=set_func(headnode_remove_network))
-        net_dis.add_argument('--nic')
-
-        # project parser
-        proj_create = project_subparsers.add_parser('register',
-                                                    parents=[get_name])
-        proj_create.set_defaults(func=project_create)
-
-        proj_delete = project_subparsers.add_parser('delete',
-                                                    parents=[get_name])
-        proj_delete.set_defaults(func=project_delete)
-
-        proj_connect = project_subparsers.add_parser('connect',
-                                                     parents=[get_name])
-        proj_connect.add_argument('--node',
-                                  action=set_func(project_connect_node))
-        proj_connect.add_argument('--network', '--net', action=set_func(
-                                  network_grant_project_access))
-        proj_connect.add_argument('--user', action=set_func(user_add_project))
-
-        proj_dis = project_subparsers.add_parser('disconnect',
-                                                 parents=[get_name])
-        proj_dis.add_argument('--user', action=set_func(user_remove_project))
-        proj_dis.add_argument('--network', '--net',
-                              action=set_func(network_remove_project))
-        proj_dis.add_argument('--project', '--proj',
-                              action=set_func(project_remove_node))
-        proj_dis.add_argument('--node', action=set_func(project_remove_node))
-        proj_list = project_subparsers.add_parser('list')
-        proj_list.set_defaults(func=list_projects)
-
-        # switch parser
-        switch_register_parser = switch_subparsers.add_parser(
-                                 'register', parents=[get_name])
-        switch_registers = switch_register_parser.add_mutually_exclusive_group(
-                           required=True)
-        switch_registers.add_argument('--nexus', nargs=4,
-                                      metavar=('host', 'user',
-                                               'password', 'vlan'))
-        switch_registers.add_argument('--mock', nargs=3,
-                                      metavar=('host', 'user', 'password'))
-        switch_registers.add_argument('--powerconnect55xx', nargs=3,
-                                      metavar=('host', 'user', 'password'))
-        switch_registers.add_argument('--brocade', nargs=4,
-                                      metavar=('host', 'user',
-                                               'pwd', 'interface'))
-        switch_register_parser.set_defaults(func=switch_register)
-
-        switch_delete_parser = switch_subparsers.add_parser('delete',
-                                                            parents=[get_name])
-        switch_delete_parser.set_defaults(func=switch_delete)
-
-        switch_show = switch_subparsers.add_parser('show',
-                                                   parents=[get_name])
-        switch_show.set_defaults(func=show_switch)
-
-        switch_list = switch_subparsers.add_parser('list')
-        switch_list.set_defaults(func=list_switches)
-
-        # user parser
-        user_register_parser = user_subparsers.add_parser('register',
-                                                          parents=[get_name])
-        user_register_parser.add_argument('password')
-        user_register_parser.add_argument('--admin', action='store_true')
-        user_register_parser.set_defaults(func=user_create)
-
-        user_delete_parser = user_subparsers.add_parser('delete',
-                                                        parents=[get_name])
-        user_delete_parser.set_defaults(func=user_delete)
-
-        user_connect = user_subparsers.add_parser('connect',
-                                                  parents=[get_name])
-        user_connect.add_argument('--project', required=True)
-        user_connect.set_defaults(func=user_add_project)
-
-        user_disconnect = user_subparsers.add_parser('disconnect',
-                                                     parents=[get_name])
-        user_disconnect.add_argument('--project', required=True)
-        user_disconnect.set_defaults(func=user_remove_project)
-
-        args = parser.parse_args(sys.argv[1:])
         try:
             args.func(args)
         except TypeError:
             # any errors throw here are issues in the parser namespace
             print "Argument Type Not Accepted"
-            raise InvalidAPIArgumentsException()
+            raise InvalidAPIArguemntsException
+
+    def serve_func(self):
+        serve_parser = self.subcommand_parsers.add_parser(
+                       'serve', help="starts a http client")
+        serve_parser.add_argument('port', type=int, help="port number")
+        serve_parser.set_defaults(func=serve)
+
+    def serve_networks_func(self):
+        serve_networks_parser = self.subcommand_parsers.add_parser(
+                                'serve_networks')
+        serve_networks_parser.set_defaults(func=serve_networks)
+
+    def create_first_admin_func(self):
+        create_first_admin = self.subcommand_parsers.add_parser('admin')
+        create_first_admin.add_argument('name')
+        create_first_admin.add_argument('password')
+        create_first_admin.set_defaults(func=create_admin_user)
+
+    def user_func(self):
+        user_parser = self.subcommand_parsers.add_parser('user')
+        self.user_subparsers = user_parser.add_subparsers()
+        self.user_register_func()
+        self.user_delete_func()
+        self.user_connect_func()
+        self.user_disconnect_func()
+
+    def user_register_func(self):
+        user_reg = self.user_subparsers.add_parser(
+                   'register', parents=[CommandListener.get_name])
+        user_reg.set_defaults(func=user_create)
+        user_reg.add_argument('--password', '--pass')
+        user_reg.add_argument('--admin', action='store_true')
+
+    def user_delete_func(self):
+        user_del = self.user_subparsers.add_parser(
+                   'delete', parents=[CommandListener.get_name])
+        user_del.set_defaults(func=user_delete)
+
+    def user_connect_func(self):
+        user_con = self.user_subparsers.add_parser(
+                   'connect', parents=[CommandListener.get_name])
+        user_con.set_defaults(func=user_add_project)
+        user_con.add_argument('--project', '--proj')
+
+    def user_disconnect_func(self):
+        user_dis = self.user_subparsers.add_parser(
+                   'disconnect', parents=[CommandListener.get_name])
+        user_dis.set_defaults(func=user_remove_project)
+        user_dis.add_argument('--project', '--proj')
 
 
 def serve(args):
@@ -876,15 +639,15 @@ def node_delete(args):
     do_delete(url)
 
 
-def node_power_cycle(node):
+def node_power_cycle(args):
     """Power cycle <node>"""
-    url = object_url('node', node, 'power_cycle')
+    url = object_url('node', args.name, 'power_cycle')
     do_post(url)
 
 
-def node_power_off(node):
+def node_power_off(args):
     """Power off <node>"""
-    url = object_url('node', node, 'power_off')
+    url = object_url('node', args.name, 'power_off')
     do_post(url)
 
 
@@ -1248,7 +1011,7 @@ def main():
     config.setup()
     setup_http_client()
     try:
-        CommandListener()
+        CommandListener().run()
     except FailedAPICallException:
         sys.exit(1)
     except InvalidAPIArgumentsException:
