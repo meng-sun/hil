@@ -119,6 +119,12 @@ class CommandFramework(object):
         node_console_stop = node_console_actions.add_parser(
                             'stop', parents=[get_name])
 
+        node_power = node_subparsers.add_parser('power')
+        node_powers = node_power.add_subparsers()
+        node_powers_off = node_powers.add_parser('off', parents=[get_name])
+        node_powers_cycle = node_powers.add_parser(
+                            'cycle', parents=[get_name])
+
         # headnode statements
         hn_reg = headnode_subparsers.add_parser('register',
                                                 parents=[get_name])
