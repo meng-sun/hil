@@ -311,7 +311,7 @@ class CommandListener(object):
                                            metavar=('host',
                                                     'user',
                                                     'password'))
-        node_register_subtype.add_argument('--impi', nargs=3,
+        node_register_subtype.add_argument('--ipmi', nargs=3,
                                            metavar=('host',
                                                     'user',
                                                     'password'))
@@ -366,7 +366,7 @@ class CommandListener(object):
         user_reg.set_defaults(func=user_create)
         user_reg.add_argument('--password', '--pass')
         user_reg.add_argument('--admin', action='store_true')
-        user_del = user_subparsers.add_parser('delete', parents=[get-name])
+        user_del = user_subparsers.add_parser('delete', parents=[get_name])
         user_del.set_defaults(func=user_delete)
         user_con = user_subparsers.add_parser('connect', parents=[get_name])
         user_con.set_defaults(func=user_add_project)
