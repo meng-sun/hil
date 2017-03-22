@@ -24,6 +24,10 @@ import sys
 import urllib
 import schema
 import abc
+import argparse
+
+# to be removed after transition:
+import cli
 
 from functools import wraps
 
@@ -31,6 +35,21 @@ command_dict = {}
 usage_dict = {}
 MIN_PORT_NUMBER = 1
 MAX_PORT_NUMBER = 2**16 - 1
+
+
+def set_func(function):
+    """An argparser action class.
+    Allows optional flags to set a default function"""
+
+    class func_caller(argparse.Action):
+        def __init__(self, option_strings, dest, nargs=None, **kwargs):
+            super(func_caller, self).__init__(option_strings,
+                                              dest, nargs, **kwargs)
+
+        def __call__(self, parser, namespace, values, option_string=None):
+            setattr(namespace, 'func', function)
+            setattr(namespace, self.dest, values)
+    return func_caller
 
 
 class HTTPClient(object):
@@ -125,44 +144,6 @@ http_client = None
 
 class InvalidAPIArgumentsException(Exception):
     pass
-
-
-def cmd(f):
-    """A decorator for CLI commands.
-
-    This decorator firstly adds the function to a dictionary of valid CLI
-    commands, secondly adds exception handling for when the user passes the
-    wrong number of arguments, and thirdly generates a 'usage' description and
-    puts it in the usage dictionary.
-    """
-
-    # Build the 'usage' info for the help:
-    args, varargs, _, _ = inspect.getargspec(f)
-    num_args = len(args)  # used later to validate passed args.
-    showee = [f.__name__] + ['<%s>' % name for name in args]
-    args = ' '.join(['<%s>' % name for name in args])
-    if varargs:
-        showee += ['<%s...>' % varargs]
-    usage_dict[f.__name__] = ' '.join(showee)
-
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        try:
-            # For commands which accept a variable number of arguments,
-            # num_args is the *minimum* required arguments; there is no
-            # maximum. For other commands, there must be *exactly* `num_args`
-            # arguments:
-            if len(args) < num_args or not varargs and len(args) > num_args:
-                raise InvalidAPIArgumentsException()
-            f(*args, **kwargs)
-        except InvalidAPIArgumentsException as e:
-            if e.message != '':
-                sys.stderr.write(e.message + '\n\n')
-            sys.stderr.write('Invalid arguements.  Usage:\n')
-            help(f.__name__)
-
-    command_dict[f.__name__] = wrapped
-    return wrapped
 
 
 def setup_http_client():
@@ -274,18 +255,142 @@ def do_delete(url):
     check_status_code(http_client.request('DELETE', url))
 
 
-@cmd
-def serve(port):
+class TransitionMessageException(Exception):
+    """used to help transition between cli and cli_new
+    """
+    pass
+
+
+class ArgumentParserWithLongHelp(argparse.ArgumentParser):
+    """ArgumentParser that prints a reformatted version
+    of the usage statement when the user inputs too few
+    arguments"""
+    def __init__(self, prog=None, usage=None, **kwargs):
+        super(ArgumentParserWithLongHelp, self).__init__(prog, usage, **kwargs)
+
+    def error(self, message):
+        args = {'prog': self.prog, 'message': message}
+        if message == "too few arguments":
+            command_string = self.format_usage()
+            i = 0
+            while i < len(command_string) and command_string[i] != ']':
+                i += 1
+            i += 1
+            super(ArgumentParserWithLongHelp, self)._print_message(
+                  "You entered: "+command_string[7:i]+"\n")
+            super(ArgumentParserWithLongHelp, self)._print_message(
+                  "Please check if missing: "+command_string[i:])
+            super(ArgumentParserWithLongHelp, self).exit(
+                  2, ('%(prog)s: error: %(message)s\n') % args)
+        elif message[0:14] == "invalid choice":
+            raise TransitionMessageException()
+
+        else:
+            self.print_usage(sys.stderr)
+            super(ArgumentParserWithLongHelp, self).exit(
+                  2, ('%(prog)s: error: %(message)s\n') % args)
+
+
+class CommandListener(object):
+    """Creates argparse parser structure for calling API functions.
+    Class variables are abstract parent parsers, and object variables
+    hold all the subparsers passed between functions for sub-
+    command creation. Calling self.run() will parse one user-input
+    string.
+    """
+    get_name = argparse.ArgumentParser(add_help=False)
+    get_name.add_argument('name', metavar='<object name>')
+
+    get_type = argparse.ArgumentParser(add_help=False)
+    get_type.add_argument('type', metavar='<object type>')
+
+    def __init__(self):
+        self.parser = ArgumentParserWithLongHelp('haas')
+        self.subcommand_parsers = self.parser.add_subparsers()
+        self.user_subparsers = None
+
+    def run(self):
+        """Creates all parsers and parses arguments.
+        """
+        self.serve_func()
+        self.serve_networks_func()
+        self.create_first_admin_func()
+        self.user_func()
+
+        try:
+            args = self.parser.parse_args(sys.argv[1:])
+        except TransitionMessageException:
+            # sends the command to cli
+            cli.main(sys.argv[1:])
+            sys.exit(0)
+
+        try:
+            args.func(args)
+        except TypeError:
+            # any errors throw here are issues in the parser namespace
+            print "Argument Type Not Accepted"
+            raise InvalidAPIArguemntsException
+
+    def serve_func(self):
+        serve_parser = self.subcommand_parsers.add_parser(
+                       'serve', help="starts a http client")
+        serve_parser.add_argument('port', type=int, help="port number")
+        serve_parser.set_defaults(func=serve)
+
+    def serve_networks_func(self):
+        serve_networks_parser = self.subcommand_parsers.add_parser(
+                                'serve_networks')
+        serve_networks_parser.set_defaults(func=serve_networks)
+
+    def create_first_admin_func(self):
+        create_first_admin = self.subcommand_parsers.add_parser('admin')
+        create_first_admin.add_argument('name')
+        create_first_admin.add_argument('password')
+        create_first_admin.set_defaults(func=create_admin_user)
+
+    def user_func(self):
+        user_parser = self.subcommand_parsers.add_parser('user')
+        self.user_subparsers = user_parser.add_subparsers()
+        self.user_register_func()
+        self.user_delete_func()
+        self.user_connect_func()
+        self.user_disconnect_func()
+
+    def user_register_func(self):
+        user_reg = self.user_subparsers.add_parser(
+                   'register', parents=[CommandListener.get_name])
+        user_reg.set_defaults(func=user_create)
+        user_reg.add_argument('--password', '--pass')
+        user_reg.add_argument('--admin', action='store_true')
+
+    def user_delete_func(self):
+        user_del = self.user_subparsers.add_parser(
+                   'delete', parents=[CommandListener.get_name])
+        user_del.set_defaults(func=user_delete)
+
+    def user_connect_func(self):
+        user_con = self.user_subparsers.add_parser(
+                   'connect', parents=[CommandListener.get_name])
+        user_con.set_defaults(func=user_add_project)
+        user_con.add_argument('--project', '--proj')
+
+    def user_disconnect_func(self):
+        user_dis = self.user_subparsers.add_parser(
+                   'disconnect', parents=[CommandListener.get_name])
+        user_dis.set_defaults(func=user_remove_project)
+        user_dis.add_argument('--project', '--proj')
+
+
+def serve(args):
     try:
-        port = schema.And(
-            schema.Use(int),
-            lambda n: MIN_PORT_NUMBER <= n <= MAX_PORT_NUMBER).validate(port)
+        args.port = schema.And(schema.Use(int),
+                               lambda n:
+                               MIN_PORT_NUMBER <= n <= MAX_PORT_NUMBER
+                               ).validate(args.port)
     except schema.SchemaError:
-        raise InvalidAPIArgumentsException(
-            'Error: Invaid port. Must be in the range 1-65535.'
-        )
+        sys.exit('Error: Invalid port. Must be in the range 1-65535.')
     except Exception as e:
-        sys.exit('Unxpected Error!!! \n %s' % e)
+        sys.exit('Unexpected Error!!! \n %s' % e)
 
     """Start the HaaS API server"""
     if cfg.has_option('devel', 'debug'):
@@ -296,11 +401,10 @@ def serve(port):
     # (via `rest_call`), though we don't use it directly:
     from haas import model, api, rest
     server.init(stop_consoles=True)
-    rest.serve(port, debug=debug)
+    rest.serve(args.port, debug=debug)
 
 
-@cmd
-def serve_networks():
+def serve_networks(args):
     """Start the HaaS networking server"""
     from haas import model, deferred
     from time import sleep
@@ -316,164 +420,204 @@ def serve_networks():
         sleep(2)
 
 
-@cmd
-def user_create(username, password, is_admin):
+def user_create(args):
     """Create a user <username> with password <password>.
 
     <is_admin> may be either "admin" or "regular", and determines whether
     the user has administrative priveledges.
     """
-    url = object_url('/auth/basic/user', username)
-    if is_admin not in ('admin', 'regular'):
-        raise InvalidAPIArgumentsException(
-            "is_admin must be either 'admin' or 'regular'"
-        )
+    if args.admin:
+        is_admin = "admin"
+    else:
+        is_admin = "regular"
+
+    url = object_url('/auth/basic/user', args.name)
     do_put(url, data={
-        'password': password,
-        'is_admin': is_admin == 'admin',
+        'password': args.password,
+        'is_admin': is_admin,
     })
 
 
-@cmd
-def network_create(network, owner, access, net_id):
-    """Create a link-layer <network>.  See docs/networks.md for details"""
+def network_create(args):
+    """Create a link-layer <network>. See docs/networks.md for details."""
+    network = args.name
+    owner = args.description[0]
+    access = args.description[1]
+    net_id = args.description[2]
     url = object_url('network', network)
     do_put(url, data={'owner': owner,
                       'access': access,
                       'net_id': net_id})
 
 
-@cmd
-def network_create_simple(network, project):
-    """Create <network> owned by project.  Specific case of network_create"""
-    url = object_url('network', network)
-    do_put(url, data={'owner': project,
-                      'access': project,
+def network_create_simple(args):
+    """Creates a simple <network> owned by project."""
+    url = object_url('network', args.name)
+    do_put(url, data={'owner': args.project,
+                      'access': args.project,
                       'net_id': ""})
 
 
-@cmd
-def network_delete(network):
+def network_delete(args):
     """Delete a <network>"""
+    network = args.name
     url = object_url('network', network)
     do_delete(url)
 
 
-@cmd
-def user_delete(username):
+def user_delete(args):
     """Delete the user <username>"""
-    url = object_url('/auth/basic/user', username)
+    url = object_url('/auth/basic/user', args.name)
     do_delete(url)
 
 
-@cmd
-def list_projects():
+def list_projects(args):
     """List all projects"""
     url = object_url('projects')
     do_get(url)
 
 
-@cmd
-def user_add_project(user, project):
+def user_add_project(args):
     """Add <user> to <project>"""
+    if hasattr(args, 'user'):
+        user = args.user
+        project = args.name
+    else:
+        user = args.name
+        project = args.project
     url = object_url('/auth/basic/user', user, 'add_project')
     do_post(url, data={'project': project})
 
 
-@cmd
-def user_remove_project(user, project):
+def user_remove_project(args):
     """Remove <user> from <project>"""
+    if hasattr(args, 'user'):
+        user = args.user
+        project = args.name
+    else:
+        user = args.name
+        project = args.project
     url = object_url('/auth/basic/user', user, 'remove_project')
     do_post(url, data={'project': project})
 
 
-@cmd
-def network_grant_project_access(project, network):
+def network_grant_project_access(args):
     """Add <project> to <network> access"""
+    if hasattr(args, 'network'):
+        network = args.network
+        project = args.name
+    else:
+        network = args.name
+        project = args.project
     url = object_url('network', network, 'access', project)
     do_put(url)
 
 
-@cmd
-def network_revoke_project_access(project, network):
+def network_remove_project(args):
     """Remove <project> from <network> access"""
+    if hasattr(args, 'network'):
+        network = args.name
+        project = args.project
+    else:
+        network = args.network
+        project = args.name
     url = object_url('network', network, 'access', project)
     do_delete(url)
 
 
-@cmd
-def project_create(project):
+def project_create(args):
     """Create a <project>"""
-    url = object_url('project', project)
+    url = object_url('project', args.name)
     do_put(url)
 
 
-@cmd
-def project_delete(project):
+def project_delete(args):
     """Delete <project>"""
-    url = object_url('project', project)
+    url = object_url('project', args.name)
     do_delete(url)
 
 
-@cmd
-def headnode_create(headnode, project, base_img):
+def headnode_create(args):
     """Create a <headnode> in a <project> with <base_img>"""
+    headnode = args.name
+    project = args.project
+    base_img = args.image
     url = object_url('headnode', headnode)
     do_put(url, data={'project': project,
                       'base_img': base_img})
 
 
-@cmd
-def headnode_delete(headnode):
+def headnode_delete(args):
     """Delete <headnode>"""
+    headnode = args.name
     url = object_url('headnode', headnode)
     do_delete(url)
 
 
-@cmd
-def project_connect_node(project, node):
+def project_connect_node(args):
     """Connect <node> to <project>"""
+    if hasattr(args, 'project'):
+        node = args.name
+        project = args.project
+    else:
+        node = args.node
+        project = args.name
     url = object_url('project', project, 'connect_node')
     do_post(url, data={'node': node})
 
 
-@cmd
-def project_detach_node(project, node):
+def project_remove_node(args):
     """Detach <node> from <project>"""
+    if hasattr(args, 'project'):
+        node = args.name
+        project = args.project
+    else:
+        node = args.node
+        project = args.name
     url = object_url('project', project, 'detach_node')
     do_post(url, data={'node': node})
 
 
-@cmd
-def headnode_start(headnode):
+def headnode_start(args):
     """Start <headnode>"""
+    headnode = args.name
     url = object_url('headnode', headnode, 'start')
     do_post(url)
 
 
-@cmd
-def headnode_stop(headnode):
+def headnode_stop(args):
     """Stop <headnode>"""
+    headnode = args.name
     url = object_url('headnode', headnode, 'stop')
     do_post(url)
 
 
-@cmd
-def node_register(node, subtype, *args):
+def empty(args):
+    """used to prevent argparse from throwing func not found
+    errors if the user forgets to include a option flag"""
+    pass
+
+
+def node_register(args):
     """Register a node named <node>, with the given type
         if obm is of type: ipmi then provide arguments
         "ipmi", <hostname>, <ipmi-username>, <ipmi-password>
     """
     obm_api = "http://schema.massopencloud.org/haas/v0/obm/"
     obm_types = ["ipmi", "mock"]
+    for obm in obm_types:
+        if hasattr(args, obm):
+            subtype = obm
+
+    details = getattr(args, subtype)
     # Currently the classes are hardcoded
     # In principle this should come from api.py
     # In future an api call to list which plugins are active will be added.
 
     if subtype in obm_types:
-        if len(args) == 3:
-            obminfo = {"type": obm_api + subtype, "host": args[0],
-                       "user": args[1], "password": args[2]
+        if len(details) == 3:
+            obminfo = {"type": obm_api + subtype, "host": details[0],
+                       "user": details[1], "password": details[2]
                        }
         else:
             sys.stderr.write('ERROR: subtype ' + subtype +
@@ -485,106 +629,119 @@ def node_register(node, subtype, *args):
         sys.stderr.write('Supported OBM sub-types: ipmi, mock\n')
         return
 
-    url = object_url('node', node)
+    url = object_url('node', args.name)
     do_put(url, data={"obm": obminfo})
 
 
-@cmd
-def node_delete(node):
+def node_delete(args):
     """Delete <node>"""
-    url = object_url('node', node)
+    url = object_url('node', args.name)
     do_delete(url)
 
 
-@cmd
-def node_power_cycle(node):
+def node_power_cycle(args):
     """Power cycle <node>"""
-    url = object_url('node', node, 'power_cycle')
+    url = object_url('node', args.name, 'power_cycle')
     do_post(url)
 
 
-@cmd
-def node_power_off(node):
+def node_power_off(args):
     """Power off <node>"""
-    url = object_url('node', node, 'power_off')
+    url = object_url('node', args.name, 'power_off')
     do_post(url)
 
 
-@cmd
-def node_register_nic(node, nic, macaddr):
+def node_register_nic(args):
     """
     Register existence of a <nic> with the given <macaddr> on the given <node>
     """
+    nic = args.name
+    node = args.node
+    macaddr = args.macaddr
     url = object_url('node', node, 'nic', nic)
     do_put(url, data={'macaddr': macaddr})
 
 
-@cmd
-def node_delete_nic(node, nic):
+def node_delete_nic(args):
     """Delete a <nic> on a <node>"""
+    node = args.node
+    nic = args.name
     url = object_url('node', node, 'nic', nic)
     do_delete(url)
 
 
-@cmd
-def headnode_create_hnic(headnode, nic):
+def headnode_create_hnic(args):
     """Create a <nic> on the given <headnode>"""
+    headnode = args.headnode
+    nic = args.name
     url = object_url('headnode', headnode, 'hnic', nic)
     do_put(url)
 
 
-@cmd
-def headnode_delete_hnic(headnode, nic):
+def headnode_delete_hnic(args):
     """Delete a <nic> on a <headnode>"""
+    headnode = args.headnode
+    nic = args.name
     url = object_url('headnode', headnode, 'hnic', nic)
     do_delete(url)
 
 
-@cmd
-def node_connect_network(node, nic, network, channel):
+def node_connect_network(args):
     """Connect <node> to <network> on given <nic> and <channel>"""
+    if hasattr(args, 'network'):
+        node = args.name
+        nic = args.network[1]
+        network = args.network[0]
+    else:
+        node = args.node[0]
+        nic = args.node[1]
+        network = args.name
     url = object_url('node', node, 'nic', nic, 'connect_network')
     do_post(url, data={'network': network,
                        'channel': channel})
 
 
-@cmd
-def node_detach_network(node, nic, network):
+def node_remove_network(args):
     """Detach <node> from the given <network> on the given <nic>"""
+    if hasattr(args, 'network'):
+        node = args.name
+        nic = args.network[1]
+        network = args.network[0]
+    else:
+        node = args.node[0]
+        nic = args.node[1]
+        network = args.name
     url = object_url('node', node, 'nic', nic, 'detach_network')
     do_post(url, data={'network': network})
 
 
-@cmd
-def headnode_connect_network(headnode, nic, network):
+def headnode_connect_network(args):
     """Connect <headnode> to <network> on given <nic>"""
+    if hasattr(args, 'network'):
+        headnode = args.headnode
+        hnic = args.hnic
+        network = args.name
+    else:
+        headnode = args.name
+        hnic = args.hnic
+        network = args.network
     url = object_url('headnode', headnode, 'hnic', nic, 'connect_network')
     do_post(url, data={'network': network})
 
 
-@cmd
-def headnode_detach_network(headnode, hnic):
+def headnode_remove_network(args):
     """Detach <headnode> from the network on given <nic>"""
+    if hasattr(args, 'network'):
+        headnode = args.headnode
+        hnic = args.hnic
+    else:
+        headnode = args.name
+        hnic = args.hnic
     url = object_url('headnode', headnode, 'hnic', hnic, 'detach_network')
     do_post(url)
 
 
-@cmd
-def metadata_set(node, label, value):
-    """Register metadata with <label> and <value> with <node> """
-    url = object_url('node', node, 'metadata', label)
-    do_put(url, data={'value': value})
-
-
-@cmd
-def metadata_delete(node, label):
-    """Delete metadata with <label> from a <node>"""
-    url = object_url('node', node, 'metadata', label)
-    do_delete(url)
-
-
-@cmd
-def switch_register(switch, subtype, *args):
+def switch_register(org_args):
     """Register a switch with name <switch> and
     <subtype>, <hostname>, <username>,  <password>
     eg. haas switch_register mock03 mock mockhost01 mockuser01 mockpass01
@@ -593,7 +750,14 @@ def switch_register(switch, subtype, *args):
     backend. Ideally, this should be taken care of in the driver itself or
     client library (work-in-progress) should manage it.
     """
+    for sub_type in ["nexus", "mock", "powerconnect55xx", "brocade"]:
+        if getattr(org_args, sub_type) is not None:
+            args = getattr(org_args, sub_type)
+            subtype = sub_type
+
+    switch = org_args.name
     switch_api = "http://schema.massopencloud.org/haas/v0/switches/"
+
     if subtype == "nexus":
         if len(args) == 4:
             switchinfo = {
@@ -603,10 +767,10 @@ def switch_register(switch, subtype, *args):
                 "password": args[2],
                 "dummy_vlan": args[3]}
         else:
-            sys.stderr.write('ERROR: subtype ' + subtype +
-                             ' requires exactly 4 arguments\n'
-                             '<hostname> <username> <password>'
-                             '<dummy_vlan_no>\n')
+            sys.stderr.write(_('ERROR: subtype ' + subtype +
+                               ' requires exactly 4 arguments\n'
+                               '<hostname> <username> <password>'
+                               '<dummy_vlan_no>\n'))
             return
     elif subtype == "mock":
         if len(args) == 3:
@@ -622,9 +786,9 @@ def switch_register(switch, subtype, *args):
             switchinfo = {"type": switch_api + subtype, "hostname": args[0],
                           "username": args[1], "password": args[2]}
         else:
-            sys.stderr.write('ERROR: subtype ' + subtype +
-                             ' requires exactly 3 arguments\n'
-                             '<hostname> <username> <password>\n')
+            sys.stderr.write(_('ERROR: subtype ' + subtype +
+                               ' requires exactly 3 arguments\n'
+                               '<hostname> <username> <password>\n'))
             return
     elif subtype == "brocade":
         if len(args) == 4:
@@ -632,14 +796,14 @@ def switch_register(switch, subtype, *args):
                           "username": args[1], "password": args[2],
                           "interface_type": args[3]}
         else:
-            sys.stderr.write('ERROR: subtype ' + subtype +
-                             ' requires exactly 4 arguments\n'
-                             '<hostname> <username> <password> '
-                             '<interface_type>\n'
-                             'NOTE: interface_type refers '
-                             'to the speed of the switchports\n '
-                             'ex. TenGigabitEthernet, FortyGigabitEthernet, '
-                             'etc.\n')
+            sys.stderr.write(_('ERROR: subtype ' + subtype +
+                               ' requires exactly 4 arguments\n'
+                               '<hostname> <username> <password> '
+                               '<interface_type>\n'
+                               'NOTE: interface_type refers '
+                               'to the speed of the switchports\n '
+                               'ex. TenGigabitEthernet, FortyGigabitEthernet, '
+                               'etc.\n'))
             return
     else:
         sys.stderr.write('ERROR: Invalid subtype supplied\n')
@@ -648,53 +812,72 @@ def switch_register(switch, subtype, *args):
     do_put(url, data=switchinfo)
 
 
-@cmd
-def switch_delete(switch):
+def switch_delete(args):
     """Delete a <switch> """
+    switch = args.name
     url = object_url('switch', switch)
     do_delete(url)
 
 
-@cmd
-def list_switches():
+def list_switches(args):
     """List all switches"""
     url = object_url('switches')
     do_get(url)
 
 
-@cmd
-def port_register(switch, port):
+def port_register(args):
     """Register a <port> with <switch> """
+    switch = args.switch
+    port = args.name
     url = object_url('switch', switch, 'port', port)
     do_put(url)
 
 
-@cmd
-def port_delete(switch, port):
+def port_delete(args):
     """Delete a <port> from a <switch>"""
+    port = args.name
+    switch = args.switch
     url = object_url('switch', switch, 'port', port)
     do_delete(url)
 
 
-@cmd
-def port_connect_nic(switch, port, node, nic):
+def port_connect_nic(args):
     """Connect a <port> on a <switch> to a <nic> on a <node>"""
+    if hasattr(args, 'port'):
+        switch = args.switch
+        port = args.port
+        node = args.node
+        nic = args.name
+    else:
+        switch = args.switch
+        port = args.name
+        node = args.node
+        nic = args.nic
     url = object_url('switch', switch, 'port', port, 'connect_nic')
     do_post(url, data={'node': node, 'nic': nic})
 
 
-@cmd
-def port_detach_nic(switch, port):
+def port_remove_nic(args):
     """Detach a <port> on a <switch> from whatever's connected to it"""
+    switch = args.switch
+    if hasattr(args, 'port'):
+        port = args.port
+    else:
+        port = args.name
     url = object_url('switch', switch, 'port', port, 'detach_nic')
     do_post(url)
 
 
-@cmd
-def list_network_attachments(network, project):
+def list_network_attachments(args):
     """List nodes connected to a network
     <project> may be either "all" or a specific project name.
     """
+    if hasattr(args, 'network'):
+        network = args.network[0]
+        project = args.network[1]
+    else:
+        network = args.attachments[1]
+        project = args.attachments[0]
     url = object_url('network', network, 'attachments')
 
     if project == "all":
@@ -703,107 +886,99 @@ def list_network_attachments(network, project):
         do_get(url, params={'project': project})
 
 
-@cmd
-def list_nodes(is_free):
+def list_nodes(args):
     """List all nodes or all free nodes
-
     <is_free> may be either "all" or "free", and determines whether
         to list all nodes or all free nodes.
     """
-    if is_free not in ('all', 'free'):
-        raise InvalidAPIArgumentsException(
-            "is_free must be either 'all' or 'free'"
-        )
+    if args.is_free:
+        is_free = 'free'
+    else:
+        is_free = 'all'
     url = object_url('nodes', is_free)
     do_get(url)
 
 
-@cmd
-def list_project_nodes(project):
+def list_project_nodes(args):
     """List all nodes attached to a <project>"""
-    url = object_url('project', project, 'nodes')
+    url = object_url('project', args.project, 'nodes')
     do_get(url)
 
 
-@cmd
-def list_project_networks(project):
+def list_project_networks(args):
     """List all networks attached to a <project>"""
+    project = args.project
     url = object_url('project', project, 'networks')
     do_get(url)
 
 
-@cmd
-def show_switch(switch):
+def show_switch(args):
     """Display information about <switch>"""
-    url = object_url('switch', switch)
+    url = object_url('switch', args.name)
     do_get(url)
 
 
-@cmd
-def list_networks():
+def list_networks(args):
     """List all networks"""
     url = object_url('networks')
     do_get(url)
 
 
-@cmd
-def show_network(network):
+def show_network(args):
     """Display information about <network>"""
+    network = args.name
     url = object_url('network', network)
     do_get(url)
 
 
-@cmd
-def show_node(node):
+def show_node(args):
     """Display information about a <node>"""
-    url = object_url('node', node)
+    url = object_url('node', args.name)
     do_get(url)
 
 
-@cmd
-def list_project_headnodes(project):
+def list_project_headnodes(args):
     """List all headnodes attached to a <project>"""
+    project = args.project
     url = object_url('project', project, 'headnodes')
     do_get(url)
 
 
-@cmd
-def show_headnode(headnode):
+def show_headnode(args):
     """Display information about a <headnode>"""
+    headnode = args.name
     url = object_url('headnode', headnode)
     do_get(url)
 
 
-@cmd
-def list_headnode_images():
+def list_headnode_images(args):
     """Display registered headnode images"""
     url = object_url('headnode_images')
     do_get(url)
 
 
-@cmd
-def show_console(node):
+def show_console(args):
     """Display console log for <node>"""
+    node = args.name
     url = object_url('node', node, 'console')
     do_get(url)
 
 
-@cmd
-def start_console(node):
+def start_console(args):
     """Start logging console output from <node>"""
+    node = args.name
     url = object_url('node', node, 'console')
     do_put(url)
 
 
-@cmd
-def stop_console(node):
+def stop_console(args):
+    node = args.name
     """Stop logging console output from <node> and delete the log"""
     url = object_url('node', node, 'console')
     do_delete(url)
 
 
-@cmd
-def create_admin_user(username, password):
+def create_admin_user(args):
     """Create an admin user. Only valid for the database auth backend.
 
     This must be run on the HaaS API server, with access to haas.cfg and the
@@ -814,6 +989,8 @@ def create_admin_user(username, password):
     have an initial admin, you can (and should) create additional users via
     the API.
     """
+    username = args.name
+    password = args.password
     if not config.cfg.has_option('extensions', 'haas.ext.auth.database'):
         sys.exit("'make_inital_admin' is only valid with the database auth"
                  " backend.")
@@ -825,38 +1002,17 @@ def create_admin_user(username, password):
     db.session.commit()
 
 
-@cmd
-def help(*commands):
-    """Display usage of all following <commands>, or of all commands if none
-    are given
-    """
-    if not commands:
-        sys.stdout.write('Usage: %s <command> <arguments...> \n' % sys.argv[0])
-        sys.stdout.write('Where <command> is one of:\n')
-        commands = sorted(command_dict.keys())
-    for name in commands:
-        # For each command, print out a summary including the name, arguments,
-        # and the docstring (as a #comment).
-        sys.stdout.write('  %s\n' % usage_dict[name])
-        sys.stdout.write('      %s\n' % command_dict[name].__doc__)
-
-
-def main(argv):
+def main():
     """Entry point to the CLI.
 
     There is a script located at ${source_tree}/scripts/haas, which invokes
     this function.
     """
-    # config.setup()
-    if len(argv) < 1 or argv[0] not in command_dict:
-        # Display usage for all commands
-        help()
+    config.setup()
+    setup_http_client()
+    try:
+        CommandListener().run()
+    except FailedAPICallException:
         sys.exit(1)
-    else:
-        setup_http_client()
-        try:
-            command_dict[argv[0]](*argv[1:])
-        except FailedAPICallException:
-            sys.exit(1)
-        except InvalidAPIArgumentsException:
-            sys.exit(2)
+    except InvalidAPIArgumentsException:
+        sys.exit(2)
