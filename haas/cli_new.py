@@ -329,7 +329,7 @@ class CommandListener(object):
         except TypeError:
             # any errors throw here are issues in the parser namespace
             print "Argument Type Not Accepted"
-            raise InvalidAPIArguemntsException
+            raise InvalidAPIArgumentsException
 
     def serve_func(self):
         serve_parser = self.subcommand_parsers.add_parser(
